@@ -12,9 +12,8 @@ namespace ThePitt.EditorTools
 {
     /// <summary>
     /// The Pitt → Commit. Both options ask for a commit message, then commit everything to the dev branch and push it.
-    /// "Commit to GitHub" also takes a patch notes .md and a build zip: the commit is tagged v&lt;version&gt; and a
-    /// draft GitHub release is made from the notes and the zips (the chosen zip plus the other platform's zip of the same
-    /// version). The release workflow (.github/workflows/release.yml) publishes drafts when dev is merged into main.
+    /// "Commit to GitHub" also takes a patch notes .md and the Linux and Windows build zips: the commit is tagged
+    /// v&lt;version&gt; and a draft GitHub release is made from the notes and both zips. The release workflow (.github/workflows/release.yml) publishes drafts when dev is merged into main.
     /// "Without build" adds no tag, so the latest build tag stays the newest one.
     /// Uploading releases needs the GitHub CLI: sudo pacman -S github-cli, then gh auth login.
     /// </summary>
@@ -35,7 +34,8 @@ namespace ThePitt.EditorTools
         private bool withBuild;
         private string message = "";
         private string patchnotes = "";
-        private string zip = "";
+        private string linuxZip = "";
+        private string windowsZip = "";
 
         private static void Open(bool withBuild)
         {
@@ -62,11 +62,12 @@ namespace ThePitt.EditorTools
             window.titleContent = new GUIContent(withBuild ? "Commit to GitHub" : "Commit to GitHub (without build)");
             if (withBuild)
             {
-                window.zip = LatestZip();
-                string notes = Path.Combine(PatchnotesRoot, $"Version {VersionOf(window.zip)}.md");
+                window.linuxZip = LatestZip("Linux");
+                window.windowsZip = LatestZip("Windows");
+                string notes = Path.Combine(PatchnotesRoot, $"Version {VersionOf(window.windowsZip)}.md");
                 window.patchnotes = File.Exists(notes) ? notes : "";
             }
-            window.minSize = new Vector2(480, withBuild ? 250 : 170);
+            window.minSize = new Vector2(480, withBuild ? 270 : 170);
             window.ShowUtility();
         }
 
@@ -81,13 +82,19 @@ namespace ThePitt.EditorTools
             {
                 EditorGUILayout.Space();
                 FileField("Patch notes", ref patchnotes, "md", PatchnotesRoot);
-                FileField("Build zip", ref zip, "zip", BuildsRoot);
-                ready &= File.Exists(patchnotes) && File.Exists(zip);
-                if (File.Exists(zip))
+                FileField("Linux zip", ref linuxZip, "zip", BuildsRoot);
+                FileField("Windows zip", ref windowsZip, "zip", BuildsRoot);
+                ready &= File.Exists(patchnotes) && File.Exists(linuxZip) && File.Exists(windowsZip);
+                if (File.Exists(linuxZip) && File.Exists(windowsZip))
                 {
-                    string version = VersionOf(zip);
-                    EditorGUILayout.LabelField($"Tag v{version} · {string.Join(", ", ZipsFor(zip).Select(Path.GetFileName))}", EditorStyles.miniLabel);
-                    if (Run("git", $"rev-parse --verify --quiet refs/tags/v{version}", out _, out _))
+                    string version = VersionOf(windowsZip);
+                    EditorGUILayout.LabelField($"Tag v{version}", EditorStyles.miniLabel);
+                    if (VersionOf(linuxZip) != version)
+                    {
+                        EditorGUILayout.HelpBox($"The zips are different versions ({VersionOf(linuxZip)} and {version}).", MessageType.Error);
+                        ready = false;
+                    }
+                    else if (Run("git", $"rev-parse --verify --quiet refs/tags/v{version}", out _, out _))
                     {
                         EditorGUILayout.HelpBox($"Tag v{version} already exists. Build a new version first.", MessageType.Error);
                         ready = false;
@@ -103,8 +110,8 @@ namespace ThePitt.EditorTools
             {
                 if (GUILayout.Button("Commit", GUILayout.Width(90)))
                 {
-                    string version = withBuild ? VersionOf(zip) : null;
-                    var zips = withBuild ? ZipsFor(zip) : null;
+                    string version = withBuild ? VersionOf(windowsZip) : null;
+                    var zips = withBuild ? new List<string> { Path.GetFullPath(linuxZip), Path.GetFullPath(windowsZip) } : null;
                     string text = message.Trim(), notes = patchnotes;
                     Close();
                     // After this frame's GUI, so the window is gone before the editor blocks on git.
@@ -236,27 +243,16 @@ namespace ThePitt.EditorTools
             return match.Success ? match.Groups[1].Value : PlayerSettings.bundleVersion;
         }
 
-        /// <summary>The chosen zip plus the other platforms' zips of the same version beside it.</summary>
-        private static List<string> ZipsFor(string zipPath)
-        {
-            var zips = new List<string> { Path.GetFullPath(zipPath) };
-            var match = Regex.Match(Path.GetFileName(zipPath), @"^(ThePitt-.+-)[^-]+\.zip$");
-            if (match.Success)
-                foreach (var sibling in Directory.GetFiles(Path.GetDirectoryName(zipPath), match.Groups[1].Value + "*.zip"))
-                    if (!zips.Contains(Path.GetFullPath(sibling))) zips.Add(Path.GetFullPath(sibling));
-            return zips;
-        }
-
-        /// <summary>A zip from the newest version folder under Builds/, or "" if there are none.</summary>
-        private static string LatestZip()
+        /// <summary>A platform's zip from the newest version folder under Builds/ that has one, or "".</summary>
+        private static string LatestZip(string platform)
         {
             if (!Directory.Exists(BuildsRoot)) return "";
             var newest = Directory.GetDirectories(BuildsRoot)
                 .Select(dir => (dir, ok: Version.TryParse(Path.GetFileName(dir), out var v), v))
-                .Where(d => d.ok && Directory.GetFiles(d.dir, "*.zip").Length > 0)
+                .Where(d => d.ok && Directory.GetFiles(d.dir, $"*-{platform}.zip").Length > 0)
                 .OrderByDescending(d => d.v)
                 .FirstOrDefault();
-            return newest.dir == null ? "" : Directory.GetFiles(newest.dir, "*.zip").OrderBy(f => f).First();
+            return newest.dir == null ? "" : Directory.GetFiles(newest.dir, $"*-{platform}.zip").First();
         }
 
         private static string Quote(string path) => "\"" + path + "\"";
