@@ -203,7 +203,7 @@ namespace ThePitt.UI
             if (newest != null)
             {
                 var save = newest.Value;
-                MenuButton(buttonColumn, "CONTINUE", $"{save.character} · Day {save.data.day}", () => Load(save.data));
+                MenuButton(buttonColumn, "CONTINUE", $"{save.character} · Day {save.data.day}", () => Load(save));
             }
             MenuButton(buttonColumn, "NEW GAME", null, ShowNewGame);
             bool any = SaveSystem.AllSaves().Count > 0;
@@ -238,9 +238,11 @@ namespace ThePitt.UI
                     int hour = Mathf.FloorToInt(data.timeOfDay), minute = Mathf.FloorToInt((data.timeOfDay - hour) * 60f);
                     string detail = save.Loadable
                         ? $"Day {data.day} · {hour:00}:{minute:00} · saved {save.written:yyyy-MM-dd HH:mm}"
-                        : "Made with an older world generator · can't be loaded";
-                    var row = MenuButton(page, SlotName(save.slot).ToUpperInvariant(), detail, () => Load(data), save.Loadable);
+                        : save.NewerVersion
+                            ? "Made with a newer version of the game · can't be loaded"
+                            : "Made with an older world generator · can't be loaded";
                     var target = save;
+                    var row = MenuButton(page, SlotName(save.slot).ToUpperInvariant(), detail, () => Load(target), save.Loadable);
                     DeleteButton(row, () => ConfirmDelete(target));
                 }
             }
@@ -298,7 +300,7 @@ namespace ThePitt.UI
             dialog = cover;
             var box = NewRect("Box", cover);
             box.anchorMin = box.anchorMax = box.pivot = new Vector2(0.5f, 0.5f);
-            box.sizeDelta = new Vector2(Mathf.Max(620f, choices.Length * 250f), 260f);
+            float width = Mathf.Max(620f, choices.Length * 250f);
             box.gameObject.AddComponent<Image>().color = new Color(0.06f, 0.06f, 0.07f, 1f);
             var layout = box.gameObject.AddComponent<VerticalLayoutGroup>();
             layout.padding = new RectOffset(32, 32, 26, 28);
@@ -310,7 +312,11 @@ namespace ThePitt.UI
             var heading = NewText(box, title, 28, Warning, FontStyle.Bold);
             heading.gameObject.AddComponent<LayoutElement>().preferredHeight = 40f;
             var body = NewText(box, message, 19, Ink, FontStyle.Normal);
-            body.gameObject.AddComponent<LayoutElement>().preferredHeight = 60f;
+            // Tall enough for the whole message once it wraps inside the padding, and the box with it.
+            var wrap = body.GetGenerationSettings(new Vector2(width - 64f, 0f));
+            float bodyHeight = Mathf.Max(60f, Mathf.Ceil(body.cachedTextGeneratorForLayout.GetPreferredHeight(message, wrap) / body.pixelsPerUnit));
+            body.gameObject.AddComponent<LayoutElement>().preferredHeight = bodyHeight;
+            box.sizeDelta = new Vector2(width, 200f + bodyHeight);
 
             var row = NewRect("Buttons", box);
             row.gameObject.AddComponent<LayoutElement>().preferredHeight = 60f;
@@ -480,7 +486,27 @@ namespace ThePitt.UI
             StartCoroutine(Loading(() => SaveSystem.StartNewGame(name, seed)));
         }
 
-        private void Load(SaveData data) => StartCoroutine(Loading(() =>
+        /// <summary>Loads a save, first asking if its world is from an older version of the game.</summary>
+        private void Load(SaveSystem.SaveInfo save)
+        {
+            if (!save.OlderVersion)
+            {
+                LoadNow(save.data);
+                return;
+            }
+            Dialog("OLDER SAVE",
+                $"{save.character} · {SlotName(save.slot)} · Day {save.data.day}\n" +
+                "This save was made with an older version of the game. Some newer features may be missing, and map bugs " +
+                "may still be present.\nLoad it anyway?",
+                ("CANCEL", CloseDialog, false),
+                ("LOAD", () =>
+                {
+                    CloseDialog();
+                    LoadNow(save.data);
+                }, false));
+        }
+
+        private void LoadNow(SaveData data) => StartCoroutine(Loading(() =>
         {
             Unpause();
             SaveSystem.StartFromSave(data);

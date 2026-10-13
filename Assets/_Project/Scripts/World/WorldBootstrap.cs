@@ -38,11 +38,12 @@ namespace ThePitt.World
         // character nothing could be saved for the rest of the session. Serialized fields survive the reload.
         [SerializeField, HideInInspector] private string character;
         [SerializeField, HideInInspector] private int seed;
+        [SerializeField, HideInInspector] private int generatorVersion;
         [SerializeField, HideInInspector] private bool built;
 
         private void OnEnable()
         {
-            if (built && !WorldRequest.Active) WorldRequest.Set(string.IsNullOrEmpty(character) ? null : character, seed, newGame: false);
+            if (built && !WorldRequest.Active) WorldRequest.Set(string.IsNullOrEmpty(character) ? null : character, seed, newGame: false, generatorVersion);
         }
 
         private void Awake()
@@ -60,6 +61,7 @@ namespace ThePitt.World
             }
             character = WorldRequest.Character;
             seed = WorldRequest.Seed;
+            generatorVersion = WorldRequest.GeneratorVersion;
             BuildScreen();
         }
 
@@ -73,7 +75,7 @@ namespace ThePitt.World
             if (SaveRegistry.Instance == null) SaveRegistry.Instance = greybox.itemRegistry;
             // A frame's worth of work at a time, then let the bar redraw.
             var frame = Stopwatch.StartNew();
-            foreach (float progress in PittGreyboxGenerator.BuildSteps(greybox, WorldRequest.Seed))
+            foreach (float progress in PittGreyboxGenerator.BuildSteps(greybox, WorldRequest.Seed, WorldRequest.GeneratorVersion))
             {
                 SetBar(progress * BuildShare);
                 if (frame.ElapsedMilliseconds < 30) continue;

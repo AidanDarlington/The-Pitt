@@ -15,9 +15,17 @@ namespace ThePitt.World
     {
         /// <summary>
         /// Bump whenever a change to the generator would build a different city from the same seed. Saves record
-        /// it; one made with another version can't be loaded, since its world no longer exists.
+        /// the version their world was built with, and loading builds that same version again, so a save always
+        /// gets its own city back. That only works if the generator keeps the old behaviour available: put each
+        /// change behind a check of <see cref="buildVersion"/> (e.g. <c>if (g.buildVersion >= 3)</c>).
         /// </summary>
         public const int GeneratorVersion = 2;
+
+        /// <summary>The oldest version the generator can still build. Saves from before it can't be loaded.</summary>
+        public const int OldestGeneratorVersion = 2;
+
+        /// <summary>The generator version the city is being built at: the current one, or an older save's.</summary>
+        [NonSerialized] public int buildVersion = GeneratorVersion;
 
         /// <summary>A district's colour identity: the murk you walk through and the colours its signs use.</summary>
         /// <summary>A flat area at its own height: one of the terraces the city stands on, or a gang square.</summary>

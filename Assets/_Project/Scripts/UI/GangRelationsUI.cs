@@ -53,6 +53,7 @@ namespace ThePitt.UI
         private Button foundButton, supplyButton;
         private readonly Button[] stanceButtons = new Button[3];
         private Font font;
+        private RectTransform panel, confirm;
         private bool wasOpen, showingGang;
         private float statusUntil;
         private int nameIndex, colourIndex;
@@ -98,6 +99,7 @@ namespace ThePitt.UI
         {
             bool open = inventory != null && inventory.IsOpen;
             if (open && !wasOpen) Refresh();
+            if (!open && wasOpen) CloseConfirm();
             wasOpen = open;
             if (status != null && status.text.Length > 0 && Time.unscaledTime > statusUntil) status.text = "";
         }
@@ -150,8 +152,11 @@ namespace ThePitt.UI
                 Say($"You walk away from {FactionManager.The(row.faction.Name)}. They won't forget it.");
                 return;
             }
-            string refusal = fm.ProposeAlliance(row.faction, out string fallout);
-            Say(refusal ?? $"{FactionManager.The(row.faction.Name, true)} agree. You're allies now." + (fallout != null ? $" {Capitalise(fallout)} don't like it." : ""));
+            Confirm("PROPOSE ALLIANCE?", $"Propose an alliance with {FactionManager.The(row.faction.Name)}?", "Propose", () =>
+            {
+                string refusal = fm.ProposeAlliance(row.faction, out string fallout);
+                Say(refusal ?? $"{FactionManager.The(row.faction.Name, true)} agree. You're allies now." + (fallout != null ? $" {Capitalise(fallout)} don't like it." : ""));
+            });
         }
 
         private void War(Row row)
@@ -163,8 +168,54 @@ namespace ThePitt.UI
                 Say(fm.MakePeace(row.faction, wallet) ? $"Peace with {FactionManager.The(row.faction.Name)}, for {price} scrip." : $"Peace costs {price} scrip.");
                 return;
             }
-            string pleased = fm.DeclareWar(row.faction);
-            Say($"War with {FactionManager.The(row.faction.Name)}." + (pleased != null ? $" {Capitalise(pleased)} approve." : " Watch yourself on their streets."));
+            Confirm("DECLARE WAR?", $"Declare war on {FactionManager.The(row.faction.Name)}? Your standing with them drops to -100.", "Declare war", () =>
+            {
+                string pleased = fm.DeclareWar(row.faction);
+                Say($"War with {FactionManager.The(row.faction.Name)}." + (pleased != null ? $" {Capitalise(pleased)} approve." : " Watch yourself on their streets."));
+            });
+        }
+
+        /// <summary>Asks first: a box over the panel (the rest dimmed) with Cancel and the action.</summary>
+        private void Confirm(string title, string message, string action, System.Action onConfirm)
+        {
+            CloseConfirm();
+            confirm = NewRect("Confirm", panel);
+            confirm.anchorMin = Vector2.zero;
+            confirm.anchorMax = Vector2.one;
+            confirm.offsetMin = confirm.offsetMax = Vector2.zero;
+            // Catches clicks, so nothing behind it can be pressed.
+            confirm.gameObject.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.7f);
+
+            var box = NewRect("Box", confirm);
+            box.anchorMin = box.anchorMax = box.pivot = new Vector2(0.5f, 0.5f);
+            box.sizeDelta = new Vector2(420f, 170f) * scale;
+            box.gameObject.AddComponent<Image>().color = new Color(0.06f, 0.06f, 0.07f, 1f);
+            var heading = NewText(box, "Title", title, 20, TextAnchor.MiddleCenter);
+            heading.fontStyle = FontStyle.Bold;
+            heading.color = new Color(0.95f, 0.55f, 0.35f);
+            Place(heading.rectTransform, 0f, -14f, 390f, 28f);
+            var body = NewText(box, "Message", message, 15, TextAnchor.MiddleCenter);
+            body.horizontalOverflow = HorizontalWrapMode.Wrap;
+            Place(body.rectTransform, 0f, -48f, 390f, 60f);
+
+            float x = -147.5f;
+            NewButton(box, ref x, -122f, 145f, 32f, out var cancel, CloseConfirm);
+            cancel.text = "Cancel";
+            cancel.fontSize = Scaled(15);
+            var go = NewButton(box, ref x, -122f, 145f, 32f, out var label, () =>
+            {
+                CloseConfirm();
+                onConfirm();
+            });
+            label.text = action;
+            label.fontSize = Scaled(15);
+            go.image.color = new Color(0.3f, 0.08f, 0.07f, 0.95f);
+        }
+
+        private void CloseConfirm()
+        {
+            if (confirm != null) Destroy(confirm.gameObject);
+            confirm = null;
         }
 
         private void Recipe(Row row)
@@ -232,12 +283,17 @@ namespace ThePitt.UI
                 var def = f.definition;
                 var relation = fm.RelationTo(f);
                 string colour = ColorUtility.ToHtmlStringRGB(def.Color);
-                row.header.text = f.eliminated
-                    ? $"<color=#{colour}>■</color> <b>{f.Name}</b>   <color=#7A7468>WIPED OUT</color>"
-                    : $"<color=#{colour}>■</color> <b>{f.Name}</b>   <color=#{ColorUtility.ToHtmlStringRGB(RelationColour(relation))}>{relation.ToString().ToUpperInvariant()}</color>";
+                // In columns, the relation, the details and the recipe's state each get their own line.
+                string gap = Columns ? "\n" : "   ";
+                string state = f.eliminated
+                    ? "<color=#7A7468>WIPED OUT</color>"
+                    : $"<color=#{ColorUtility.ToHtmlStringRGB(RelationColour(relation))}>{relation.ToString().ToUpperInvariant()}</color>";
+                row.header.text = $"<color=#{colour}>■</color> <b>{f.Name}</b>{gap}{(Columns ? $"<size={Scaled(15)}>{state}</size>" : state)}";
 
                 string trade = relation is Relation.War or Relation.Hostile ? "won't trade" : $"pays ×{fm.TradeMultiplier(f):0.00}";
-                row.details.text = $"Standing {f.standing:+0;-0;0}   ·   {fm.ShareOf(f):P0} of the Pitt   ·   {trade}";
+                row.details.text = Columns
+                    ? $"Standing {f.standing:+0;-0;0}\n{fm.ShareOf(f):P0} of the Pitt\n{Capitalise(trade)}"
+                    : $"Standing {f.standing:+0;-0;0}   ·   {fm.ShareOf(f):P0} of the Pitt   ·   {trade}";
                 float t = Mathf.InverseLerp(-100f, 100f, f.standing);
                 row.standingFill.rectTransform.anchorMax = new Vector2(t, 1f);
                 row.standingFill.color = RelationColour(relation);
@@ -249,8 +305,8 @@ namespace ThePitt.UI
 
                 var recipe = def.SignatureRecipe;
                 if (recipe == null) row.recipe.text = "";
-                else if (fm.KnowsRecipe(f)) row.recipe.text = $"Recipe: <b>{recipe.DisplayName}</b> <color=#8FD07A>learned</color> · {StationName(recipe.Station)}";
-                else row.recipe.text = $"Recipe: <b>{recipe.DisplayName}</b> <color=#{ColorUtility.ToHtmlStringRGB(Muted)}>free at Friendly, or buy it</color>";
+                else if (fm.KnowsRecipe(f)) row.recipe.text = $"Recipe: <b>{recipe.DisplayName}</b>{(Columns ? "\n" : " ")}<color=#8FD07A>learned</color> · {StationName(recipe.Station)}";
+                else row.recipe.text = $"Recipe: <b>{recipe.DisplayName}</b>{(Columns ? "\n" : " ")}<color=#{ColorUtility.ToHtmlStringRGB(Muted)}>free at Friendly, or buy it</color>";
 
                 if (f.eliminated || !f.requestOpen) row.request.text = "<color=#7A7468>No request today</color>";
                 else
@@ -346,7 +402,6 @@ namespace ThePitt.UI
             var fm = FactionManager.Instance;
             if ((inventoryPanel == null && host == null) || fm == null) return;
 
-            RectTransform panel;
             if (host != null)
             {
                 // Filling the player menu's content area; its tabs pick the section.
@@ -395,8 +450,16 @@ namespace ThePitt.UI
             ShowTab(showingGang);
         }
 
+        /// <summary>In the player menu: one full-height column per rival gang, across the whole tab.</summary>
+        private bool Columns => host != null;
+
         private void BuildRivals(FactionManager fm)
         {
+            if (Columns)
+            {
+                BuildRivalColumns(fm);
+                return;
+            }
             const float height = 148f;
             int index = 0;
             foreach (var f in fm.Factions)
@@ -404,9 +467,7 @@ namespace ThePitt.UI
                 if (f.IsPlayer) continue;
                 var row = new Row { faction = f };
                 var box = NewRect("Gang_" + f.definition.name, rivalsTab);
-                // In the player menu there's room for two columns.
-                if (host != null) Place(box, index % 2 == 0 ? -227f : 227f, -(index / 2) * height, 440f, height - 6f);
-                else Place(box, 0f, -index * height, 440f, height - 6f);
+                Place(box, 0f, -index * height, 440f, height - 6f);
                 index++;
                 box.gameObject.AddComponent<Image>().color = RowColour;
 
@@ -449,6 +510,89 @@ namespace ThePitt.UI
                 row.recipeButton = NewButton(box, ref x, -114f, 100f, 26f, out row.recipeButtonLabel, () => Recipe(captured));
                 rows.Add(row);
             }
+        }
+
+        private void BuildRivalColumns(FactionManager fm)
+        {
+            int count = 0;
+            foreach (var f in fm.Factions)
+                if (!f.IsPlayer) count++;
+            int index = 0;
+            foreach (var f in fm.Factions)
+            {
+                if (f.IsPlayer) continue;
+                var row = new Row { faction = f };
+                var box = NewRect("Gang_" + f.definition.name, rivalsTab);
+                box.anchorMin = new Vector2(index / (float)count, 0f);
+                box.anchorMax = new Vector2((index + 1) / (float)count, 1f);
+                box.offsetMin = new Vector2(index == 0 ? 0f : 5f * scale, 0f);
+                box.offsetMax = new Vector2(index == count - 1 ? 0f : -5f * scale, 0f);
+                index++;
+                box.gameObject.AddComponent<Image>().color = RowColour;
+
+                row.header = Wrapped(box, "Header", 20, 12f, 52f);
+                row.header.alignment = TextAnchor.UpperLeft;
+
+                var bar = NewRect("Standing", box);
+                Band(bar, 74f, 8f);
+                bar.gameObject.AddComponent<Image>().color = new Color(0.05f, 0.05f, 0.05f, 1f);
+                var fill = NewRect("Fill", bar);
+                fill.anchorMin = Vector2.zero;
+                fill.anchorMax = new Vector2(0.5f, 1f);
+                fill.offsetMin = fill.offsetMax = Vector2.zero;
+                row.standingFill = fill.gameObject.AddComponent<Image>();
+                var middle = NewRect("Neutral", bar);
+                middle.anchorMin = new Vector2(0.5f, 0f);
+                middle.anchorMax = new Vector2(0.5f, 1f);
+                middle.sizeDelta = new Vector2(2f, 4f) * scale;
+                middle.gameObject.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.5f);
+
+                row.details = Wrapped(box, "Details", 14, 96f, 64f);
+                row.details.color = Muted;
+                row.enemies = Wrapped(box, "Enemies", 14, 174f, 40f);
+                row.recipe = Wrapped(box, "Recipe", 14, 226f, 52f);
+                row.request = Wrapped(box, "Request", 14, 290f, 52f);
+
+                var captured = row;
+                float x = 0f;
+                row.deliver = NewButton(box, ref x, 0f, 0f, 0f, out row.deliverLabel, () => Deliver(captured));
+                row.deliverLabel.text = "Deliver";
+                Band((RectTransform)row.deliver.transform, 346f, 28f);
+                row.tribute = ColumnButton(box, 404f, out row.tributeLabel, () => Tribute(captured));
+                row.alliance = ColumnButton(box, 440f, out row.allianceLabel, () => Alliance(captured));
+                row.war = ColumnButton(box, 476f, out row.warLabel, () => War(captured));
+                row.recipeButton = ColumnButton(box, 512f, out row.recipeButtonLabel, () => Recipe(captured));
+                rows.Add(row);
+            }
+        }
+
+        /// <summary>A full-width button in a gang's column, its top this far down (unscaled).</summary>
+        private Button ColumnButton(RectTransform column, float top, out Text label, UnityEngine.Events.UnityAction onClick)
+        {
+            float x = 0f;
+            var button = NewButton(column, ref x, 0f, 0f, 0f, out label, onClick);
+            Band((RectTransform)button.transform, top, 30f);
+            label.fontSize = Scaled(14);
+            return button;
+        }
+
+        /// <summary>Text across a column that wraps onto more lines.</summary>
+        private Text Wrapped(RectTransform column, string name, int size, float top, float height)
+        {
+            var t = NewText(column, name, "", size, TextAnchor.UpperLeft);
+            t.horizontalOverflow = HorizontalWrapMode.Wrap;
+            Band(t.rectTransform, top, height);
+            return t;
+        }
+
+        /// <summary>Stretched across the parent inside side margins, at a height this far down from its top (unscaled).</summary>
+        private void Band(RectTransform rt, float top, float height, float side = 12f)
+        {
+            rt.anchorMin = new Vector2(0f, 1f);
+            rt.anchorMax = new Vector2(1f, 1f);
+            rt.pivot = new Vector2(0.5f, 1f);
+            rt.offsetMin = new Vector2(side * scale, -(top + height) * scale);
+            rt.offsetMax = new Vector2(-side * scale, -top * scale);
         }
 
         private void BuildGang()

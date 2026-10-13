@@ -8,8 +8,9 @@ namespace ThePitt.Player
     /// <summary>
     /// The first six inventory slots, switched between with 1-6 (or the scroll wheel). Selecting a slot takes
     /// its weapon or tool in hand, or holds up food, drink, a drug or a station to be used with a click (eaten,
-    /// or placed); anything else brings the fists up, and so does the item in the selected slot running out. Picking an empty slot on purpose lowers the hands entirely, and pressing
-    /// the selected slot's key again puts it away without bringing the fists up.
+    /// or placed). An empty slot brings the fists up, whether picked empty or emptied by the item running out;
+    /// anything else (scrap, springs and the like) leaves the hands down. Pressing the selected slot's key again
+    /// puts it away without bringing the fists up.
     /// </summary>
     [RequireComponent(typeof(Inventory), typeof(PlayerCombat))]
     public class Hotbar : MonoBehaviour
@@ -21,8 +22,6 @@ namespace ThePitt.Player
         private PlayerVitals vitals;
         private PlacementController placement;
         private int selected = -1;
-        // The selected slot was empty when picked: keep the hands down until something lands in it.
-        private bool choseEmpty;
 
         /// <summary>The selected slot, or -1 for none.</summary>
         public int Selected => selected;
@@ -102,7 +101,6 @@ namespace ThePitt.Player
         {
             if (index < 0 || index >= Size) return;
             selected = index;
-            choseEmpty = inventory.GetSlot(index).IsEmpty;
             Apply();
         }
 
@@ -111,7 +109,6 @@ namespace ThePitt.Player
         {
             if (selected < 0) return;
             selected = -1;
-            choseEmpty = false;
             Changed?.Invoke();
         }
 
@@ -127,18 +124,11 @@ namespace ThePitt.Player
             if (selected >= 0)
             {
                 var slot = inventory.GetSlot(selected);
-                if (slot.IsEmpty)
-                {
-                    if (choseEmpty) combat.PutAway();
-                    else combat.Hold(null, ItemQuality.Standard);
-                }
-                else
-                {
-                    choseEmpty = false;
-                    if (slot.item.IsWeapon) combat.Hold(slot.item, slot.quality);
-                    else if (UseVerb(slot.item) != null) combat.HoldUsable(slot.item, slot.quality);
-                    else combat.Hold(null, ItemQuality.Standard);
-                }
+                // An empty slot is the fists; a material can't be held up, so nothing shows.
+                if (slot.IsEmpty) combat.Hold(null, ItemQuality.Standard);
+                else if (slot.item.IsWeapon) combat.Hold(slot.item, slot.quality);
+                else if (UseVerb(slot.item) != null) combat.HoldUsable(slot.item, slot.quality);
+                else combat.PutAway();
             }
             Changed?.Invoke();
         }
@@ -147,7 +137,6 @@ namespace ThePitt.Player
         public void Restore(int index, bool handsDown)
         {
             selected = index >= 0 && index < Size ? index : -1;
-            choseEmpty = selected >= 0 && inventory.GetSlot(selected).IsEmpty;
             if (selected >= 0) Apply();
             else
             {

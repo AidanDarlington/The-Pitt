@@ -6358,7 +6358,6 @@ MonoBehaviour:
   hintLabel: {fileID: 2133528699}
   reach: 5
   maxSlope: 20
-  rotateStep: 15
   placedParent: {fileID: 1417464136}
 --- !u!114 &1919675980
 MonoBehaviour:

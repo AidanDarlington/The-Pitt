@@ -138,8 +138,10 @@ namespace ThePitt.UI
                     AddRow($"{s.item.DisplayName}   —   {s.price} each   <size=16>{s.remaining} left</size>{note}", can,
                         () => Buy(captured));
                 }
-                AddHeading("THEY'LL BUY");
+                if (p.Buys) AddHeading("THEY'LL BUY");
             }
+            // Sells only (a dealer): nothing of the player's to list.
+            if (!p.Buys) return;
 
             int rows = 0;
             for (int slot = 0; slot < inventory.SlotCount; slot++)

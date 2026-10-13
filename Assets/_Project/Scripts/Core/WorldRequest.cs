@@ -17,6 +17,8 @@ namespace ThePitt.Core
         /// <summary>Whose game this is; names their save folder. Null when playing the game scene straight from the editor.</summary>
         public static string Character { get; private set; }
         public static int Seed { get; private set; }
+        /// <summary>The generator version to build the world at: an older save keeps the city it was made in.</summary>
+        public static int GeneratorVersion { get; private set; } = World.PittGreybox.GeneratorVersion;
         /// <summary>A brand-new character: they start inside their own property, and get a first save.</summary>
         public static bool IsNewGame { get; private set; }
         /// <summary>Whether anything asked for a world (otherwise the game scene was opened directly).</summary>
@@ -28,14 +30,16 @@ namespace ThePitt.Core
         {
             Character = null;
             Seed = 0;
+            GeneratorVersion = World.PittGreybox.GeneratorVersion;
             IsNewGame = false;
             Active = false;
         }
 
-        public static void Set(string character, int seed, bool newGame)
+        public static void Set(string character, int seed, bool newGame, int generatorVersion = World.PittGreybox.GeneratorVersion)
         {
             Character = character;
             Seed = seed;
+            GeneratorVersion = generatorVersion;
             IsNewGame = newGame;
             Active = true;
         }

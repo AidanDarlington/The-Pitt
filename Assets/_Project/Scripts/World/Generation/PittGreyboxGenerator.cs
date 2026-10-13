@@ -110,7 +110,7 @@ namespace ThePitt.World.Generation
         /// </summary>
         public static void PlanLayout(PittGreybox greybox, int seed)
         {
-            Begin(greybox, seed);
+            Begin(greybox, seed, PittGreybox.GeneratorVersion);
             Layout();
             // Catwalks only exist once built; the preview map goes without them.
             catwalkZones = new List<Rect>();
@@ -122,9 +122,9 @@ namespace ThePitt.World.Generation
         /// NavMesh, all at once (the editor's preview). The game uses <see cref="BuildSteps"/> to show progress.
         /// Returns the root of everything built.
         /// </summary>
-        public static Transform Build(PittGreybox greybox, int seed)
+        public static Transform Build(PittGreybox greybox, int seed, int version = PittGreybox.GeneratorVersion)
         {
-            foreach (var _ in BuildSteps(greybox, seed)) { }
+            foreach (var _ in BuildSteps(greybox, seed, version)) { }
             return LastBuilt;
         }
 
@@ -134,9 +134,10 @@ namespace ThePitt.World.Generation
         /// <summary>
         /// The same build as <see cref="Build"/>, a piece at a time: each step returns how far through it is (0..1),
         /// weighted by how long each part takes, so a loading bar can follow it. The city is finished (and
-        /// <see cref="LastBuilt"/> set) when the steps run out.
+        /// <see cref="LastBuilt"/> set) when the steps run out. <paramref name="version"/> is the generator version
+        /// to build at: an older save's world is rebuilt as that version made it.
         /// </summary>
-        public static IEnumerable<float> BuildSteps(PittGreybox greybox, int seed)
+        public static IEnumerable<float> BuildSteps(PittGreybox greybox, int seed, int version = PittGreybox.GeneratorVersion)
         {
             var clock = Stopwatch.StartNew();
             var timings = new System.Text.StringBuilder();
@@ -164,7 +165,7 @@ namespace ThePitt.World.Generation
             foreach (var stage in stages) total += stage.cost;
             float done = 0f;
 
-            Begin(greybox, seed);
+            Begin(greybox, seed, version);
             Clear(g);
             var root = new GameObject(GeneratedName).transform;
             root.SetParent(g.transform, false);
@@ -220,15 +221,22 @@ namespace ThePitt.World.Generation
             yield return 1f;
         }
 
-        private static void Begin(PittGreybox greybox, int seed)
+        private static void Begin(PittGreybox greybox, int seed, int version)
         {
             g = greybox;
             g.seed = seed;
+            g.buildVersion = version;
             glowCache = new Dictionary<string, Material>();
             cubeCache = new Dictionary<Vector3Int, Mesh>();
             planIndex = null;
             rng = new System.Random(seed);
         }
+
+        /// <summary>
+        /// Whether the city being built is at least this generator version. Every change that alters what a seed
+        /// builds goes behind one, with the old behaviour kept for older saves (see <see cref="PittGreybox.GeneratorVersion"/>).
+        /// </summary>
+        private static bool Since(int version) => g.buildVersion >= version;
 
         /// <summary>The plan of the city: everything the build and the map follow. Same seed, same plan.</summary>
         private static void Layout()
@@ -2745,8 +2753,47 @@ namespace ThePitt.World.Generation
                 tc.enabled = false;
                 tc.enabled = true;
             }
+            KeepNpcsOutOfPit();
             Physics.SyncTransforms();
             surface.BuildNavMesh();
+        }
+
+        /// <summary>
+        /// Marks the scrap pit and its ramp not walkable, so NPCs walk round the pit rather than through it. Strips
+        /// across the bowl follow its round edge; all of it stays below street level, so the rim and anything
+        /// crossing over the ramp are untouched.
+        /// </summary>
+        private static void KeepNpcsOutOfPit()
+        {
+            var root = g.transform.Find(GeneratedName);
+            if (root == null) return;
+            var parent = Group(root, "PitNavBlock");
+            int notWalkable = UnityEngine.AI.NavMesh.GetAreaFromName("Not Walkable");
+            float street = g.GroundAt(g.pitCenter);
+            float bottom = street - g.pitDepth - 2f, top = street - 0.5f;
+            void Block(Rect area)
+            {
+                var volume = new GameObject("NoWalk").AddComponent<NavMeshModifierVolume>();
+                volume.transform.SetParent(parent, false);
+                volume.area = notWalkable;
+                volume.transform.position = new Vector3(area.center.x, (top + bottom) / 2f, area.center.y);
+                volume.center = Vector3.zero;
+                volume.size = new Vector3(area.width, top - bottom, area.height);
+            }
+
+            const int strips = 12;
+            float r = g.pitRadius, width = 2f * r / strips;
+            for (int i = 0; i < strips; i++)
+            {
+                // Out to the circle at the strip's edge nearest the middle, so the whole bowl is covered.
+                float x0 = -r + i * width, inner = Mathf.Min(Mathf.Abs(x0), Mathf.Abs(x0 + width));
+                if (x0 < 0f && x0 + width > 0f) inner = 0f;
+                float half = Mathf.Sqrt(Mathf.Max(0f, r * r - inner * inner));
+                Block(Rect.MinMaxRect(g.pitCenter.x + x0, g.pitCenter.y - half, g.pitCenter.x + x0 + width, g.pitCenter.y + half));
+            }
+            // The ramp's trench (it climbs out along +Z), edges included.
+            float rampHalf = g.rampWidth * 0.5f + 1.5f;
+            Block(Rect.MinMaxRect(g.pitCenter.x - rampHalf, g.pitCenter.y, g.pitCenter.x + rampHalf, g.pitCenter.y + g.RampEnd));
         }
 
         private static void BuildDetails(Transform root)

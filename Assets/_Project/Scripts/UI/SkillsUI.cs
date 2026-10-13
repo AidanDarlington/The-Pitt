@@ -15,7 +15,7 @@ namespace ThePitt.UI
     /// <item>top middle, the skill's name, level and xp bar;</item>
     /// <item>two branches of eight ranks each, production speed and yield (+5% a rank), each with its own generic icon;</item>
     /// <item>the milestones, unlocked at their level, each teaching a recipe (shown with the item it makes);</item>
-    /// <item>bottom middle, the points left to spend (one per level).</item>
+    /// <item>bottom middle, the points left to spend (one a level).</item>
     /// </list>
     /// Also announces level-ups with a popup.
     /// </summary>
@@ -169,7 +169,7 @@ namespace ThePitt.UI
             points.text = pts.ToString();
             points.color = pts > 0 ? Accent : Muted;
 
-            speedCaption.text = $"PRODUCTION SPEED   <color=#{Hex(TextColour)}>+{Skills.Bonus(skill, Perk.Speed) * 100f:0}%</color>";
+            speedCaption.text = $"{SpeedName(skill).ToUpperInvariant()}   <color=#{Hex(TextColour)}>+{Skills.Bonus(skill, Perk.Speed) * 100f:0}%</color>";
             yieldCaption.text = $"YIELD   <color=#{Hex(TextColour)}>+{Skills.Bonus(skill, Perk.Yield) * 100f:0}%</color>";
             RefreshBranch(speedNodes, skill, Perk.Speed, colour);
             RefreshBranch(yieldNodes, skill, Perk.Yield, colour);
@@ -248,11 +248,13 @@ namespace ThePitt.UI
             _ => $"{percent:0}% more out of every {Skills.Name(skill).ToLowerInvariant()} recipe (any fraction is a chance of one extra).",
         };
 
+        private static string SpeedName(Skill skill) => skill == Skill.Harvesting ? "Harvesting speed" : "Production speed";
+
         private void Describe(Perk perk, int index)
         {
             int rank = Skills.Rank(treeSkill, perk);
             float percent = (index + 1) * Skills.PerRank * 100f;
-            string name = perk == Perk.Speed ? "Production speed" : "Yield";
+            string name = perk == Perk.Speed ? SpeedName(treeSkill) : "Yield";
             string state = index < rank ? "Bought." : index == rank ? (Skills.Points(treeSkill) > 0 ? "Click to buy: 1 point." : "Needs a skill point.") : "Buy the ranks before it first.";
             detail.text = $"<b>{name} {Roman(index + 1)}</b>   {PerkEffect(treeSkill, perk, percent)}   <color=#{Hex(Muted)}>{state}</color>";
         }
@@ -304,7 +306,7 @@ namespace ThePitt.UI
             BuildBranch(yieldNodes, Perk.Yield, -352f);
 
             var mc = NewLeft(treeRoot, "MilestoneCaption", 18, -600f, -498f, 700f, 26f);
-            mc.text = "MILESTONES   <color=#B8B2A8>a recipe nobody else can teach you</color>";
+            mc.text = "MILESTONES";
             mc.color = Muted;
             var milestoneLink = NewRect("MilestoneLink", treeRoot);
             Place(milestoneLink, 0f, -578f, 440f, 4f);
@@ -336,7 +338,7 @@ namespace ThePitt.UI
             box.sizeDelta = new Vector2(300f, 76f);
             box.gameObject.AddComponent<Image>().color = new Color(0.08f, 0.075f, 0.07f, 1f);
             box.gameObject.AddComponent<Outline>().effectColor = new Color(Accent.r, Accent.g, Accent.b, 0.8f);
-            var caption = NewText(box, "Caption", "SKILL POINTS\n<size=13>one per level</size>", 15, TextAnchor.MiddleLeft, 18f, -10f, 180f, 56f);
+            var caption = NewText(box, "Caption", "SKILL POINTS", 15, TextAnchor.MiddleLeft, 18f, -10f, 180f, 56f);
             caption.color = Muted;
             caption.fontStyle = FontStyle.Bold;
             points = NewCentred(box, "Value", 44, FontStyle.Bold, 0f, 0f, 100f, 76f);
@@ -561,7 +563,7 @@ namespace ThePitt.UI
 
             card.total = NewText(box, "Total", "", 18, TextAnchor.MiddleLeft, left, -104f, right, 26f);
             card.total.color = Muted;
-            var source = NewText(box, "Source", Source(skill) + (available ? $"\n<color=#{Hex(Accent)}>Click to open its skill tree.</color>" : ""),
+            var source = NewText(box, "Source", Source(skill),
                 18, TextAnchor.UpperLeft, left, -140f, right, 90f);
             source.color = Muted;
             source.horizontalOverflow = HorizontalWrapMode.Wrap;
