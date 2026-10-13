@@ -17,7 +17,7 @@ MonoBehaviour:
   station: 3
   ingredients:
   - item: {fileID: 11400000, guid: 43301526993dd9a1aa4f624e03b0e459, type: 2}
-    amount: 3
+    amount: 1
   - item: {fileID: 11400000, guid: ff48bdb1ff3960165baf36eaf7f4ab32, type: 2}
     amount: 3
   output: {fileID: 11400000, guid: 8611722c123f522d4850c59041b62400, type: 2}

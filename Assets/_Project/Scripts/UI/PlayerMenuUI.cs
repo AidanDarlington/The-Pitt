@@ -95,7 +95,8 @@ namespace ThePitt.UI
                     hidden[go] = go.activeSelf;
                     go.SetActive(false);
                 }
-                Select(current);
+                // Always opens on the inventory, whichever tab was last looked at.
+                Select(0);
             }
             else
             {
@@ -258,13 +259,8 @@ namespace ThePitt.UI
 
             var title = craftingPanel.Find("Title");
             if (title != null) title.gameObject.SetActive(false);
-            var hint = craftingPanel.Find("Hint") as RectTransform;
-            if (hint != null)
-            {
-                StretchTop(hint, 0f, 30f);
-                var text = hint.GetComponent<Text>();
-                if (text != null) text.fontSize = 20;
-            }
+            var hint = craftingPanel.Find("Hint");
+            if (hint != null) hint.gameObject.SetActive(false);
             var list = craftingPanel.Find("List") as RectTransform;
             if (list != null)
             {
@@ -272,7 +268,7 @@ namespace ThePitt.UI
                 list.anchorMax = new Vector2(1f, 1f);
                 list.pivot = new Vector2(0.5f, 1f);
                 list.offsetMin = new Vector2(0f, 100f);
-                list.offsetMax = new Vector2(0f, -44f);
+                list.offsetMax = Vector2.zero;
                 var template = list.Find("RowTemplate") as RectTransform;
                 if (template != null)
                 {
@@ -308,15 +304,6 @@ namespace ThePitt.UI
             rt.pivot = new Vector2(0.5f, 0.5f);
             rt.offsetMin = rt.offsetMax = Vector2.zero;
             return rt;
-        }
-
-        private static void StretchTop(RectTransform rt, float top, float height)
-        {
-            rt.anchorMin = new Vector2(0f, 1f);
-            rt.anchorMax = new Vector2(1f, 1f);
-            rt.pivot = new Vector2(0.5f, 1f);
-            rt.offsetMin = new Vector2(0f, -top - height);
-            rt.offsetMax = new Vector2(0f, -top);
         }
     }
 }

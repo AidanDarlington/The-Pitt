@@ -114,14 +114,17 @@ namespace ThePitt.NPC
             else Destroy(gameObject);
         }
 
+        /// <summary>Has something to trade: buys from the player, or sells (a dealer sells but doesn't buy).</summary>
+        private bool Trades => profile.Buys || (TryGetComponent<NpcVendor>(out var vendor) && vendor.Stock is { Length: > 0 });
+
         public string GetPrompt(PlayerInteractor interactor) =>
-            !profile.Buys ? null :
+            !Trades ? null :
             Recruited ? $"{npcName} · off to join your crew" :
             Refuses ? $"{npcName} ({Faction.Name}) won't deal with you"
                     : $"Trade with {npcName} ({(Faction is { } gang ? gang.Name : profile.TypeName)})";
 
         public bool CanInteract(PlayerInteractor interactor) =>
-            profile.Buys && TradeUI.Instance != null && (!TryGetComponent<NpcCombat>(out var combat) || combat.IsCalm) && !Refuses && !Recruited;
+            Trades && TradeUI.Instance != null && (!TryGetComponent<NpcCombat>(out var combat) || combat.IsCalm) && !Refuses && !Recruited;
 
         /// <summary>A gang member whose gang won't deal with the player.</summary>
         private bool Refuses => Faction is { } gang && !FactionManager.Instance.WillTrade(gang);

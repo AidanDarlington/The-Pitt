@@ -179,7 +179,7 @@ namespace ThePitt.Core
         public static void StartFromSave(SaveData data)
         {
             pending = data;
-            WorldRequest.Set(data.character, data.seed, newGame: false);
+            WorldRequest.Set(data.character, data.seed, newGame: false, data.generatorVersion);
             Time.timeScale = 1f;
             Suspended = false;
             SceneManager.LoadScene(WorldRequest.WorldScene);
@@ -211,8 +211,15 @@ namespace ThePitt.Core
                 this.written = written;
             }
 
-            /// <summary>Made by this version of the world generator, so its world can be rebuilt.</summary>
-            public bool Loadable => data.generatorVersion == PittGreybox.GeneratorVersion && data.seed != 0;
+            /// <summary>Made by a version of the world generator that can still build its world.</summary>
+            public bool Loadable => data.seed != 0 && data.generatorVersion >= PittGreybox.OldestGeneratorVersion &&
+                                    data.generatorVersion <= PittGreybox.GeneratorVersion;
+
+            /// <summary>Its world is an older generator version's: newer features are missing and old map bugs remain.</summary>
+            public bool OlderVersion => data.generatorVersion < PittGreybox.GeneratorVersion;
+
+            /// <summary>Made by a newer build of the game than this one.</summary>
+            public bool NewerVersion => data.generatorVersion > PittGreybox.GeneratorVersion;
         }
 
         /// <summary>Every character's saves, newest first. Files outside a character folder (older saves) are ignored.</summary>
@@ -290,7 +297,8 @@ namespace ThePitt.Core
                 savedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
                 character = WorldRequest.Character,
                 seed = WorldRequest.Seed,
-                generatorVersion = PittGreybox.GeneratorVersion,
+                // The world's own version, so an older save stays in the city it was made in.
+                generatorVersion = WorldRequest.GeneratorVersion,
             };
 
             var time = TimeManager.Instance;

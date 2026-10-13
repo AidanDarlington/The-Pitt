@@ -10,8 +10,9 @@ namespace ThePitt.Player
 {
     /// <summary>
     /// Places a structure item (a station) in the world: a see-through preview follows where the
-    /// player looks, green where it fits and red where it doesn't. Left click places, R / scroll
-    /// rotates, right click or Esc cancels. Placing uses up one of the item. Structures only go down inside a
+    /// player looks, green where it fits and red where it doesn't. It lines up with the room's walls (rooms are
+    /// square to the world), whichever way the player faces: a new one starts facing the room's door, and
+    /// R turns it a quarter turn and scroll turns it 15 degrees, both measured from the walls. Left click places, right click or Esc cancels. Placing uses up one of the item. Structures only go down inside a
     /// property the player owns, and only if the property has the water, electricity and gas to run them.
     /// </summary>
     public class PlacementController : MonoBehaviour
@@ -26,9 +27,13 @@ namespace ThePitt.Player
         [SerializeField, Min(1f)] private float reach = 5f;
         [Tooltip("Steepest ground (degrees) a structure can sit on.")]
         [SerializeField, Range(0f, 60f)] private float maxSlope = 20f;
-        [SerializeField] private float rotateStep = 15f;
         [Tooltip("Parent for placed structures; defaults to the scene root.")]
         [SerializeField] private Transform placedParent;
+
+        /// <summary>Each R press: rooms are rectangles, so a quarter turn keeps it square to the walls.</summary>
+        private const float QuarterTurn = 90f;
+        /// <summary>Each scroll step, for setting it at an angle to the walls.</summary>
+        private const float ScrollTurn = 15f;
 
         private InputAction place;
         private ItemDefinition item;
@@ -73,7 +78,9 @@ namespace ThePitt.Player
             if (placeable == null || !placeable.IsPlaceable || inventory.Count(placeable) <= 0) return;
             item = placeable;
             startedFrame = Time.frameCount;
-            yaw = transform.eulerAngles.y + 180f; // face the player
+            // Square to the room, facing its door; away from the player if they aren't in a property.
+            var room = Properties.Property.At(transform.position + Vector3.up * 0.1f);
+            yaw = (room != null ? room.InsideYaw : transform.eulerAngles.y) + 180f;
             BuildGhost();
             SetHint(true);
         }
@@ -163,11 +170,11 @@ namespace ThePitt.Player
                 Cancel();
                 return;
             }
-            if (keyboard != null && keyboard.rKey.wasPressedThisFrame) yaw += rotateStep;
+            if (keyboard != null && keyboard.rKey.wasPressedThisFrame) yaw += QuarterTurn;
             if (mouse != null)
             {
                 float scroll = mouse.scroll.ReadValue().y;
-                if (Mathf.Abs(scroll) > 0.01f) yaw += Mathf.Sign(scroll) * rotateStep;
+                if (Mathf.Abs(scroll) > 0.01f) yaw += Mathf.Sign(scroll) * ScrollTurn;
             }
 
             UpdatePose();
@@ -206,6 +213,8 @@ namespace ThePitt.Player
                 point = ray.GetPoint(reach * 0.6f);
             }
 
+            // Rooms are rectangles square to the world: keep to whole scroll steps of it, so it lines up with the walls.
+            yaw = Mathf.Round(yaw / ScrollTurn) * ScrollTurn;
             var rotation = Quaternion.Euler(0f, yaw, 0f);
             ghost.transform.SetPositionAndRotation(point, rotation);
             if (valid) valid = !Blocked(point, rotation);
