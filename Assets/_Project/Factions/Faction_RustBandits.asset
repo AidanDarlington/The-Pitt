@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00327ec0db8f5d8009e2ffac720aeb21, type: 3}
+  m_Name: Faction_RustBandits
+  m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Factions.FactionDefinition
+  displayName: Rust Bandits
+  color: {r: 0.85, g: 0.35, b: 0.1, a: 1}
+  homeDistrict: Sodium Yards
+  startingPower: 100
+  startingRadius: 27.5
+  outposts: 0
+  dailyGrowth: 5
+  incomePerCell: 0.06
+  expansionRate: 4
+  aggression: 0.9
+  defense: 1.1
+  favouredSupply: 2
+  supplySurge: 0.8
+  startingStanding: 0
+  allianceStanding: 65
+  goodwill: 0.6
+  signatureRecipe: {fileID: 11400000, guid: 41d878e78cc8cb4b2a53b3023e7473ea, type: 2}
+  recipePrice: 600
+  dealGenerosity: 1

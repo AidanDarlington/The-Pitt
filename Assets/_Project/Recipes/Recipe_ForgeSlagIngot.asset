@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 19494ad56171262fe8a67fde01760e4c, type: 3}
+  m_Name: Recipe_ForgeSlagIngot
+  m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Production.RecipeDefinition
+  displayName: Slag Ingot
+  description: Melt down a pile of scrap and pour it into a bar.
+  station: 5
+  ingredients:
+  - item: {fileID: 11400000, guid: ff48bdb1ff3960165baf36eaf7f4ab32, type: 2}
+    amount: 10
+  output: {fileID: 11400000, guid: c3e284eeb13a3ab3193208ac77088d01, type: 2}
+  outputAmount: 1
+  craftMinutes: 30

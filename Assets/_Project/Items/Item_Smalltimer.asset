@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e9a1cf02975ddb95b9bda9386314d6b1, type: 3}
+  m_Name: Item_Smalltimer
+  m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Items.ItemDefinition
+  displayName: Smalltimer
+  description: 'A single-shot pipe pistol: a barrel, a spring and a prayer. Enough to make a small-timer look dangerous.'
+  category: 2
+  icon: {fileID: -4754974432128270686, guid: 70f0c345c47b6c9d8896dd626b50c66b, type: 3}
+  maxStack: 5
+  baseValue: 60
+  hasQuality: 1
+  nutrition: 0
+  hydration: 0
+  healthEffect: 0
+  worldModel: {fileID: 8624877241594460644, guid: d56496e02da22ca74abb4b71137d8777, type: 3}
+  placeablePrefab: {fileID: 0}
+  utilityDraw: {x: 0, y: 0, z: 0}
+  effectMinutes: 0
+  moveSpeedMultiplier: 1
+  comedownHealth: 0
+  comedownHunger: 0
+  comedownThirst: 0
+  weaponType: 2
+  damage: 45
+  range: 35
+  attackInterval: 0.35
+  ammo: {fileID: 11400000, guid: 4ef62ac4cbae76376abbd679c1bdbee8, type: 2}
+  magazineSize: 1
+  reloadSeconds: 1.8
+  spread: 1.8
+  toolType: 0
+  gatherPower: 10

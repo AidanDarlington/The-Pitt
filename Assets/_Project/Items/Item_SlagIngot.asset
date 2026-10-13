@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e9a1cf02975ddb95b9bda9386314d6b1, type: 3}
+  m_Name: Item_SlagIngot
+  m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Items.ItemDefinition
+  displayName: Slag Ingot
+  description: Scrap melted down and poured into a rough bar, still full of slag. Dense, heavy and a lot easier to work than a fistful of offcuts.
+  category: 3
+  icon: {fileID: -8840062996298888165, guid: 3431c7df510e610beaee833dc1e2af6f, type: 3}
+  maxStack: 20
+  baseValue: 25
+  hasQuality: 1
+  nutrition: 0
+  hydration: 0
+  healthEffect: 0
+  worldModel: {fileID: 2516382845445079649, guid: 9a7e672845e3ab9fe8c1acbc8a91b075, type: 3}
+  placeablePrefab: {fileID: 0}
+  utilityDraw: {x: 0, y: 0, z: 0}
+  effectMinutes: 0
+  moveSpeedMultiplier: 1
+  comedownHealth: 0
+  comedownHunger: 0
+  comedownThirst: 0
+  weaponType: 0
+  damage: 20
+  range: 2
+  attackInterval: 0.6
+  ammo: {fileID: 0}
+  magazineSize: 1
+  reloadSeconds: 1.5
+  spread: 1.5
+  toolType: 0
+  gatherPower: 10

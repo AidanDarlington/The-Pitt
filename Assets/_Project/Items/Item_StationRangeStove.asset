@@ -1,0 +1,41 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e9a1cf02975ddb95b9bda9386314d6b1, type: 3}
+  m_Name: Item_StationRangeStove
+  m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Items.ItemDefinition
+  displayName: Range Stove
+  description: A big range with more burners. Cooks half again as fast.
+  category: 6
+  icon: {fileID: -4183308316939188372, guid: e81489f16078c1ed39643ec74ecdfe0e, type: 3}
+  maxStack: 3
+  baseValue: 70
+  hasQuality: 0
+  nutrition: 0
+  hydration: 0
+  healthEffect: 0
+  placeablePrefab: {fileID: 5851957751234986113, guid: c2b6f1a676c541358aee34c8f8a301b2, type: 3}
+  utilityDraw: {x: 1, y: 1, z: 2}
+  effectMinutes: 0
+  moveSpeedMultiplier: 1
+  comedownHealth: 0
+  comedownHunger: 0
+  comedownThirst: 0
+  weaponType: 0
+  damage: 20
+  range: 2
+  attackInterval: 0.6
+  ammo: {fileID: 0}
+  magazineSize: 1
+  reloadSeconds: 1.5
+  spread: 1.5
+  toolType: 0
+  gatherPower: 10

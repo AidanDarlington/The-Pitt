@@ -1,0 +1,41 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e9a1cf02975ddb95b9bda9386314d6b1, type: 3}
+  m_Name: Item_StationRefinedDrugLab
+  m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Items.ItemDefinition
+  displayName: Refined Drug Lab
+  description: Cleaner glass and better seals. Works half again as fast.
+  category: 6
+  icon: {fileID: -465942004592746973, guid: 385c293195ef1315fae401013a1fbb2d, type: 3}
+  maxStack: 3
+  baseValue: 100
+  hasQuality: 0
+  nutrition: 0
+  hydration: 0
+  healthEffect: 0
+  placeablePrefab: {fileID: 8589605706459461285, guid: c95bd3bebf70a9274b9e6008e9519b0f, type: 3}
+  utilityDraw: {x: 1, y: 3, z: 1}
+  effectMinutes: 0
+  moveSpeedMultiplier: 1
+  comedownHealth: 0
+  comedownHunger: 0
+  comedownThirst: 0
+  weaponType: 0
+  damage: 20
+  range: 2
+  attackInterval: 0.6
+  ammo: {fileID: 0}
+  magazineSize: 1
+  reloadSeconds: 1.5
+  spread: 1.5
+  toolType: 0
+  gatherPower: 10

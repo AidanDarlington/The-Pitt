@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e9a1cf02975ddb95b9bda9386314d6b1, type: 3}
+  m_Name: Item_Grey
+  m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Items.ItemDefinition
+  displayName: Grey
+  description: A dull powder that takes the edge off everything, pain included. Heals, slows you down, leaves you parched.
+  category: 1
+  icon: {fileID: -7203101460065682122, guid: 28805668888e009ecb2c858bc3d88ae2, type: 3}
+  maxStack: 20
+  baseValue: 35
+  hasQuality: 1
+  nutrition: 0
+  hydration: 0
+  healthEffect: 15
+  worldModel: {fileID: 2921004333871407477, guid: f78f8693b5d3758b78bbdd63b0aac9ae, type: 3}
+  placeablePrefab: {fileID: 0}
+  utilityDraw: {x: 0, y: 0, z: 0}
+  effectMinutes: 90
+  moveSpeedMultiplier: 0.85
+  comedownHealth: 0
+  comedownHunger: 0
+  comedownThirst: -12
+  weaponType: 0
+  damage: 20
+  range: 2
+  attackInterval: 0.6
+  ammo: {fileID: 0}
+  magazineSize: 1
+  reloadSeconds: 1.5
+  spread: 1.5
+  toolType: 0
+  gatherPower: 10

@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00327ec0db8f5d8009e2ffac720aeb21, type: 3}
+  m_Name: Faction_Shadows
+  m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Factions.FactionDefinition
+  displayName: The Shadows
+  color: {r: 0.7, g: 0.3, b: 1, a: 1}
+  homeDistrict: The Velvet
+  startingPower: 60
+  startingRadius: 12.5
+  outposts: 4
+  dailyGrowth: 3.5
+  incomePerCell: 0.04
+  expansionRate: 2
+  aggression: 0.4
+  defense: 1.8
+  favouredSupply: 2
+  supplySurge: 4
+  startingStanding: 0
+  allianceStanding: 50
+  goodwill: 1
+  signatureRecipe: {fileID: 11400000, guid: fa1c30e406631c4d7b16f1ce057b1d41, type: 2}
+  recipePrice: 450
+  dealGenerosity: 1.1

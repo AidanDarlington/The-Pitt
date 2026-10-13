@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e9a1cf02975ddb95b9bda9386314d6b1, type: 3}
+  m_Name: Item_ReinforcedPickaxe
+  m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Items.ItemDefinition
+  displayName: Reinforced Pickaxe
+  description: A scrap pickaxe capped with forged slag. Tears into scrap heaps far faster.
+  category: 5
+  icon: {fileID: 1482487919421942857, guid: bafe40067c06ca8d698b200da3b131a6, type: 3}
+  maxStack: 1
+  baseValue: 60
+  hasQuality: 1
+  nutrition: 0
+  hydration: 0
+  healthEffect: 0
+  worldModel: {fileID: 3971196264920259232, guid: 94e720485252c5d658117a33dbb75163, type: 3}
+  placeablePrefab: {fileID: 0}
+  utilityDraw: {x: 0, y: 0, z: 0}
+  effectMinutes: 0
+  moveSpeedMultiplier: 1
+  comedownHealth: 0
+  comedownHunger: 0
+  comedownThirst: 0
+  weaponType: 1
+  damage: 16
+  range: 2.2
+  attackInterval: 0.85
+  ammo: {fileID: 0}
+  magazineSize: 1
+  reloadSeconds: 1.5
+  spread: 1.5
+  toolType: 1
+  gatherPower: 18

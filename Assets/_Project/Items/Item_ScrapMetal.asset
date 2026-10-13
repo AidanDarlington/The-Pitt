@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e9a1cf02975ddb95b9bda9386314d6b1, type: 3}
+  m_Name: Item_ScrapMetal
+  m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Items.ItemDefinition
+  displayName: Scrap Metal
+  description: Twisted offcuts dragged out of the scrap pit. Melts down into almost anything.
+  category: 3
+  icon: {fileID: 1300948461697510982, guid: 686d6bb182ed7e19b9e33370292da1c4, type: 3}
+  maxStack: 40
+  baseValue: 2
+  hasQuality: 1
+  nutrition: 0
+  hydration: 0
+  healthEffect: 0
+  worldModel: {fileID: 2828127561480740630, guid: c71cb322b8acbe509b0b44854290009a, type: 3}
+  placeablePrefab: {fileID: 0}
+  utilityDraw: {x: 0, y: 0, z: 0}
+  effectMinutes: 0
+  moveSpeedMultiplier: 1
+  comedownHealth: 0
+  comedownHunger: 0
+  comedownThirst: 0
+  weaponType: 0
+  damage: 20
+  range: 2
+  attackInterval: 0.6
+  ammo: {fileID: 0}
+  magazineSize: 1
+  reloadSeconds: 1.5
+  spread: 1.5
+  toolType: 0
+  gatherPower: 10

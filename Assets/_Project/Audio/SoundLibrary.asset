@@ -1,0 +1,41 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 474202db22b3aa3038df694e00307600, type: 3}
+  m_Name: SoundLibrary
+  m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Audio.SoundLibrary
+  gunshot: {fileID: 8300000, guid: b89ec71a07591671a9691918b9c7f39c, type: 3}
+  punches:
+  - {fileID: 8300000, guid: 351cad6fc27302aaf899b9f464e92487, type: 3}
+  - {fileID: 8300000, guid: ecabec504443fb3af94c4a3fe158d1ac, type: 3}
+  - {fileID: 8300000, guid: a81cd42ea169d2ce6a7dd502e667a32a, type: 3}
+  meleeHits:
+  - {fileID: 8300000, guid: 140972792e851ac108f2aea7ebe9d168, type: 3}
+  - {fileID: 8300000, guid: 626cb1fbc7430ce989a85c8763616ef6, type: 3}
+  swings:
+  - {fileID: 8300000, guid: a976cfafb044d675bb9403c9f6c08761, type: 3}
+  - {fileID: 8300000, guid: 85bbf31b37582b79797eb811d60a5700, type: 3}
+  reload: {fileID: 8300000, guid: f312aeeb3ba81a6a0858c762e1b4e377, type: 3}
+  dryFire: {fileID: 8300000, guid: 6f2eeecb471b185b683697ac8df1045f, type: 3}
+  footsteps:
+  - {fileID: 8300000, guid: de3f935e34241d9da8b51770ee5c8a4d, type: 3}
+  - {fileID: 8300000, guid: 9dbb06bcedc2b822eb64d608b5d9a294, type: 3}
+  - {fileID: 8300000, guid: cb9c8190a21f7a9a69c2acf2bccf245e, type: 3}
+  - {fileID: 8300000, guid: 884ee82d9a4428bebbf329ad30aa84c8, type: 3}
+  - {fileID: 8300000, guid: ac69e1ecff5afd841bf86879e89e8ab5, type: 3}
+  craftMetal:
+  - {fileID: 8300000, guid: c3448ad45cdd7272fbed0f835aa6e273, type: 3}
+  - {fileID: 8300000, guid: 651f9c5c6d6b5012d85d8b66931cd93d, type: 3}
+  - {fileID: 8300000, guid: 07ad7a3fac4362e9a887c5f975af8ba3, type: 3}
+  craftSizzle: {fileID: 8300000, guid: 02dd5f760c46863a8ad7b0c7f2c5345d, type: 3}
+  craftBubble: {fileID: 8300000, guid: b11e6e8230c7e900fa53460ecd3b3ee5, type: 3}
+  craftDone: {fileID: 8300000, guid: 8651902c045c3d5208066e0015f75287, type: 3}
+  click: {fileID: 8300000, guid: 147782c17dc75f8f493d8db07a62bb38, type: 3}

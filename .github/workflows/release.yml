@@ -1,0 +1,29 @@
+# Publishes the draft releases made by The Pitt → Commit → Commit to GitHub once dev is merged into main,
+# oldest version first so the newest ends up as the latest release.
+name: Publish releases
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish draft releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tags=$(gh release list --limit 100 --json tagName,isDraft --jq '.[] | select(.isDraft) | .tagName' | grep '^v' | sort -V || true)
+          if [ -z "$tags" ]; then
+            echo "No draft releases to publish."
+            exit 0
+          fi
+          for tag in $tags; do
+            echo "Publishing $tag"
+            gh release edit "$tag" --draft=false
+          done

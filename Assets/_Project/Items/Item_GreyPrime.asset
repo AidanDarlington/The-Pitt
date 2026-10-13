@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e9a1cf02975ddb95b9bda9386314d6b1, type: 3}
+  m_Name: Item_GreyPrime
+  m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Items.ItemDefinition
+  displayName: Grey Prime
+  description: Grey cut cleaner. A longer, stronger high that sells for much more.
+  category: 1
+  icon: {fileID: 4620779254711701015, guid: 5bc36a93c09070bee80d9c5159f237a1, type: 3}
+  maxStack: 20
+  baseValue: 48
+  hasQuality: 1
+  nutrition: 0
+  hydration: 0
+  healthEffect: 25
+  worldModel: {fileID: 1785045188534479219, guid: cb45d012ada9e18e38b58324457591d4, type: 3}
+  placeablePrefab: {fileID: 0}
+  utilityDraw: {x: 0, y: 0, z: 0}
+  effectMinutes: 150
+  moveSpeedMultiplier: 0.85
+  comedownHealth: 0
+  comedownHunger: 0
+  comedownThirst: -12
+  weaponType: 0
+  damage: 20
+  range: 2
+  attackInterval: 0.6
+  ammo: {fileID: 0}
+  magazineSize: 1
+  reloadSeconds: 1.5
+  spread: 1.5
+  toolType: 0
+  gatherPower: 10

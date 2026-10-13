@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e9a1cf02975ddb95b9bda9386314d6b1, type: 3}
+  m_Name: Item_Scattergun
+  m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Items.ItemDefinition
+  displayName: Scrap Scattergun
+  description: 'Two pipe barrels welded side by side. The Rust Bandits'' answer to most questions: point it in a doorway and pull both.'
+  category: 2
+  icon: {fileID: -6226222275705975108, guid: 7663a618633b096b9b94d341d8cf4883, type: 3}
+  maxStack: 3
+  baseValue: 140
+  hasQuality: 1
+  nutrition: 0
+  hydration: 0
+  healthEffect: 0
+  worldModel: {fileID: 9013522325525121759, guid: 6116682515e9096d08d3c92fe98c16bf, type: 3}
+  placeablePrefab: {fileID: 0}
+  utilityDraw: {x: 0, y: 0, z: 0}
+  effectMinutes: 0
+  moveSpeedMultiplier: 1
+  comedownHealth: 0
+  comedownHunger: 0
+  comedownThirst: 0
+  weaponType: 2
+  damage: 70
+  range: 14
+  attackInterval: 0.5
+  ammo: {fileID: 11400000, guid: 4ef62ac4cbae76376abbd679c1bdbee8, type: 2}
+  magazineSize: 2
+  reloadSeconds: 2.4
+  spread: 5
+  toolType: 0
+  gatherPower: 10

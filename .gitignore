@@ -1,0 +1,47 @@
+# Unity: regenerated or per-machine, never committed
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+# Unity's crash-recovery scene backups
+/[Aa]ssets/_Recovery/
+/[Aa]ssets/_Recovery.meta
+
+# Game builds and their zips (kept per version under Builds/, tagged in git)
+/[Bb]uilds/
+/[Bb]uild/
+/Captures/
+
+# IDE and generated project files
+.vs/
+.vscode/
+.idea/
+*.csproj
+*.sln
+*.slnx
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Crash and OS clutter
+crashlytics-build.properties
+mono_crash.*
+sysinfo.txt
+.DS_Store
+Thumbs.db
+
+# Claude
+/.claude
+
+# Patch notes
+/[Pp]atchnotes/

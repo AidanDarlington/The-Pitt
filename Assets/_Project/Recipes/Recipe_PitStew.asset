@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 19494ad56171262fe8a67fde01760e4c, type: 3}
+  m_Name: Recipe_PitStew
+  m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Production.RecipeDefinition
+  displayName: Pit Stew
+  description: Meat and greens stewed slow. Quality follows the meat and leaves that go in.
+  station: 2
+  ingredients:
+  - item: {fileID: 11400000, guid: 638b7baa033021872bad4a336c873a1f, type: 2}
+    amount: 1
+  - item: {fileID: 11400000, guid: 576ca7a365a2f41a59200a06a3d5e053, type: 2}
+    amount: 2
+  - item: {fileID: 11400000, guid: c8138d31ee039714183cbbde7741ca67, type: 2}
+    amount: 1
+  output: {fileID: 11400000, guid: 5440687f681c534009a9bebb1bc463fd, type: 2}
+  outputAmount: 2
+  craftMinutes: 45

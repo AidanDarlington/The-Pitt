@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8eece29c2b045ba5baa6a6e857524e75, type: 3}
+  m_Name: Buyer_Civilian
+  m_EditorClassIdentifier: Assembly-CSharp::ThePitt.NPC.NpcBuyerProfile
+  npcType: 0
+  priorities: 000000000100000002000000i
+  priorityMultipliers:
+  - 1.3
+  - 1
+  - 0.7
+  dailyCash: 240
+  cashVariance: 0.3
+  demandDropPerUnit: 0.08
+  minimumDemand: 0.4

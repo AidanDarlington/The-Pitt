@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e9a1cf02975ddb95b9bda9386314d6b1, type: 3}
+  m_Name: Item_Static
+  m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Items.ItemDefinition
+  displayName: Static
+  description: Synthetic stimulant cooked from raw chemicals. You move fast and feel nothing, until it wears off.
+  category: 1
+  icon: {fileID: 7273777662978179687, guid: 8240585362b675d99b9207fa331e47f6, type: 3}
+  maxStack: 20
+  baseValue: 22
+  hasQuality: 0
+  nutrition: 0
+  hydration: 0
+  healthEffect: 0
+  worldModel: {fileID: 5338509247518292929, guid: 5663272ce5aeb6b61839b0fc3c11f310, type: 3}
+  placeablePrefab: {fileID: 0}
+  utilityDraw: {x: 0, y: 0, z: 0}
+  effectMinutes: 120
+  moveSpeedMultiplier: 1.3
+  comedownHealth: -5
+  comedownHunger: -15
+  comedownThirst: -15
+  weaponType: 0
+  damage: 20
+  range: 2
+  attackInterval: 0.6
+  ammo: {fileID: 0}
+  magazineSize: 1
+  reloadSeconds: 1.5
+  spread: 1.5
+  toolType: 0
+  gatherPower: 10
