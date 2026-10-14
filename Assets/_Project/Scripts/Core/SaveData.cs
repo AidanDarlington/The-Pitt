@@ -125,6 +125,8 @@ namespace ThePitt.Core
         public bool allied;
         public bool atWar;
         public int requestCategory;
+        /// <summary>The item asked for (empty in saves from when requests were for any goods of a kind).</summary>
+        public string requestItem;
         public int requestCount;
         public int requestReward;
         public bool requestOpen;

@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 00327ec0db8f5d8009e2ffac720aeb21, type: 3}
   m_Name: Faction_Cultists
   m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Factions.FactionDefinition
-  displayName: The Cultists
+  displayName: Triward Cult
   color: {r: 0.45, g: 0.9, b: 0.25, a: 1}
   homeDistrict: Mildew
   startingPower: 85

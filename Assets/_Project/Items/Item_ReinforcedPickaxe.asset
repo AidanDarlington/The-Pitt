@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Items.ItemDefinition
   displayName: Reinforced Pickaxe
   description: A scrap pickaxe capped with forged slag. Tears into scrap heaps far faster.
-  category: 5
+  category: 7
   icon: {fileID: 1482487919421942857, guid: bafe40067c06ca8d698b200da3b131a6, type: 3}
   maxStack: 1
   baseValue: 60

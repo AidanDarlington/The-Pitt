@@ -16,7 +16,7 @@ MonoBehaviour:
   description: A sharpened spring steel spike dipped in Static. The Shadows like their work quick and quiet.
   category: 2
   icon: {fileID: 5643169923962080445, guid: 3010b4f710e9b8f01b4b0f3b439407cb, type: 3}
-  maxStack: 5
+  maxStack: 1
   baseValue: 50
   hasQuality: 1
   nutrition: 0

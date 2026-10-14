@@ -16,7 +16,7 @@ MonoBehaviour:
   description: Rebar with a lump of slag welded to the end. Slow to stop once it's swinging.
   category: 2
   icon: {fileID: -9201458374511988606, guid: 2d8b7faa0d2f0693f8e31d16fc041d02, type: 3}
-  maxStack: 5
+  maxStack: 1
   baseValue: 50
   hasQuality: 1
   nutrition: 0

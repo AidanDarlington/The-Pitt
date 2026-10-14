@@ -16,7 +16,7 @@ MonoBehaviour:
   description: Bitterleaf simmered in boiled water. Thin, hot, and it keeps you going.
   category: 0
   icon: {fileID: -6534369568732918002, guid: 7857339d9f846fb13bf3ec62ed8d998c, type: 3}
-  maxStack: 10
+  maxStack: 20
   baseValue: 18
   hasQuality: 1
   nutrition: 20

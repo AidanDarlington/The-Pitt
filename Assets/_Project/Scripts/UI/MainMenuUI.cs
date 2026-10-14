@@ -20,8 +20,8 @@ namespace ThePitt.UI
     /// world in the game scene and put them in it. Builds itself.
     /// With <see cref="inGame"/> set it's the pause menu instead: Esc during play opens the same left-hand panel over
     /// the greyed-out, paused game, with Return to Game, Save Game, Load Game, Options, Main Menu and Quit (the last
-    /// two ask to save first if the player hasn't since opening the menu). Esc backs out of a dialog or page, then
-    /// returns to the game like Return to Game.
+    /// two ask to save first if the player hasn't since opening the menu), and Suicide (asks first). Esc backs out of a dialog or page, then returns to the game like Return to Game.
+    /// Options has Controls, a list of the player's keys, each rebound by clicking it and pressing the new one.
     /// </summary>
     public class MainMenuUI : MonoBehaviour
     {
@@ -29,6 +29,8 @@ namespace ThePitt.UI
         [SerializeField] private PittGreybox worldPrefab;
         [Tooltip("The pause menu in the game scene rather than the title screen.")]
         [SerializeField] private bool inGame;
+        [Tooltip("The input actions, for rebinding keys in Options.")]
+        [SerializeField] private InputActionAsset actions;
 
         public const string VolumeKey = "Options.Volume";
         public const string FullscreenKey = "Options.Fullscreen";
@@ -46,6 +48,7 @@ namespace ThePitt.UI
 
         // Pause menu.
         private FirstPersonController controller;
+        private PlayerVitals vitals;
         private PlacementController placement;
         private BuildModeController buildMode;
         private bool freeLastFrame, savedThisVisit;
@@ -60,12 +63,16 @@ namespace ThePitt.UI
         private InputField nameField;
         private Button startButton, rollButton;
 
+        private bool controlsOpen;
+
         private void Awake()
         {
             font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            KeyBindings.Load(actions);
             if (inGame)
             {
                 controller = FindAnyObjectByType<FirstPersonController>();
+                vitals = FindAnyObjectByType<PlayerVitals>();
                 placement = FindAnyObjectByType<PlacementController>();
                 buildMode = FindAnyObjectByType<BuildModeController>();
                 return;
@@ -88,7 +95,8 @@ namespace ThePitt.UI
         {
             if (!inGame) return;
             bool escape = Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame;
-            if (!escape) return;
+            // Esc while waiting for a new key cancels the rebind, nothing more.
+            if (!escape || KeyBindings.Rebinding) return;
             if (IsPaused) Back();
             // Only when Esc isn't already closing something else (inventory, map, a trade, placing a structure…):
             // those all had the player's input off, or were busy, the frame before.
@@ -140,6 +148,17 @@ namespace ThePitt.UI
             if (dialog != null) CloseDialog();
             else if (page.gameObject.activeSelf) ClosePage();
             else Resume();
+        }
+
+        private void ConfirmSuicide() =>
+            Dialog("END IT HERE?", "You'll die and respawn with half your health, food and water.",
+                ("SUICIDE", Suicide, true),
+                ("CANCEL", CloseDialog, false));
+
+        private void Suicide()
+        {
+            Resume();
+            if (vitals != null) vitals.Damage(vitals.Health);
         }
 
         private void SaveNow()
@@ -197,6 +216,8 @@ namespace ThePitt.UI
                 MenuButton(buttonColumn, "OPTIONS", null, ShowOptions);
                 MenuButton(buttonColumn, "MAIN MENU", null, () => LeaveGame("SAVE BEFORE RETURNING TO THE MENU?", ReturnToMainMenu));
                 MenuButton(buttonColumn, "QUIT GAME", null, () => LeaveGame("SAVE BEFORE QUITTING?", Quit));
+                if (vitals != null)
+                    MenuButton(buttonColumn, "SUICIDE", null, ConfirmSuicide).GetComponent<Image>().color = new Color(0.3f, 0.08f, 0.07f, 0.95f);
                 return;
             }
             var newest = NewestLoadable();
@@ -358,10 +379,69 @@ namespace ThePitt.UI
                 PlayerPrefs.SetInt(FullscreenKey, on ? 1 : 0);
                 Screen.fullScreen = on;
             });
+            if (actions != null) MenuButton(page, "CONTROLS", null, ShowControls);
             MenuButton(page, "BACK", null, () =>
             {
                 PlayerPrefs.Save();
                 ClosePage();
+            });
+        }
+
+        /// <summary>Every rebindable key: click one, then press the new key (Esc cancels). Clashes show in red.</summary>
+        private void ShowControls()
+        {
+            OpenPage("CONTROLS", 620f);
+            controlsOpen = true;
+            foreach (var (label, name, part) in KeyBindings.Rebindable)
+            {
+                var action = actions.FindAction(name);
+                if (action != null) BindingRow(label, action, part);
+            }
+            MenuButton(page, "RESET TO DEFAULTS", null, () =>
+            {
+                KeyBindings.ResetAll(actions);
+                ShowControls();
+            });
+            MenuButton(page, "BACK", null, ShowOptions);
+        }
+
+        private void BindingRow(string label, InputAction action, string part)
+        {
+            int index = KeyBindings.BindingIndex(action, part);
+            var row = NewRect(label, page);
+            row.gameObject.AddComponent<LayoutElement>().preferredHeight = 36f;
+            var image = row.gameObject.AddComponent<Image>();
+            image.color = ButtonColour;
+            var button = row.gameObject.AddComponent<Button>();
+            button.targetGraphic = image;
+            var colours = button.colors;
+            colours.highlightedColor = new Color(2.2f, 1.9f, 1.5f);
+            colours.pressedColor = new Color(2.8f, 2.3f, 1.6f);
+            button.colors = colours;
+
+            var title = NewText(row, label.ToUpperInvariant(), 18, Ink, FontStyle.Bold);
+            Fill(title.rectTransform).offsetMin = new Vector2(16f, 0f);
+            var key = NewText(row, KeyBindings.Display(action, index).ToUpperInvariant(), 18, Accent, FontStyle.Bold);
+            Fill(key.rectTransform).offsetMax = new Vector2(-16f, 0f);
+            key.alignment = TextAnchor.MiddleRight;
+            if (index >= 0)
+            {
+                var clashes = KeyBindings.Clashes(actions, action, index);
+                if (clashes.Count > 0)
+                {
+                    key.color = Warning;
+                    key.text += $"  ·  ALSO {clashes[0].ToUpperInvariant()}";
+                }
+            }
+            button.onClick.AddListener(() =>
+            {
+                if (index < 0 || KeyBindings.Rebinding) return;
+                key.color = Ink;
+                key.text = "PRESS A KEY  ·  ESC TO CANCEL";
+                KeyBindings.Rebind(actions, action, index, () =>
+                {
+                    if (controlsOpen) ShowControls();
+                });
             });
         }
 
@@ -545,6 +625,8 @@ namespace ThePitt.UI
 
         private void OpenPage(string title, float width)
         {
+            controlsOpen = false;
+            KeyBindings.Cancel();
             Clear(page);
             page.sizeDelta = new Vector2(width, 0f);
             page.gameObject.SetActive(true);
@@ -554,6 +636,8 @@ namespace ThePitt.UI
 
         private void ClosePage()
         {
+            controlsOpen = false;
+            KeyBindings.Cancel();
             Clear(page);
             page.gameObject.SetActive(false);
         }

@@ -14,11 +14,11 @@ namespace ThePitt.World
     {
         [SerializeField] private PittGreybox greybox;
         [Tooltip("Most piles in the city at once.")]
-        [SerializeField, Min(0)] private int maxPiles = 20;
+        [SerializeField, Min(0)] private int maxPiles = 40;
         [Tooltip("In-game minutes for a new pile to build up after one is cleared.")]
-        [SerializeField, Min(1)] private int minutesPerPile = 60;
+        [SerializeField, Min(1)] private int minutesPerPile = 30;
         [Tooltip("Piles keep at least this far apart.")]
-        [SerializeField, Min(0f)] private float pileSpacing = 20f;
+        [SerializeField, Min(0f)] private float pileSpacing = 12f;
         [Tooltip("Keep clear of NPC doorways, so nobody walks into a pile.")]
         [SerializeField, Min(0f)] private float doorwayClearance = 3f;
 

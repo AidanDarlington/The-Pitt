@@ -7,10 +7,11 @@ namespace ThePitt.UI
     /// <summary>
     /// The player menu (Tab or I): the inventory panel at 1.5x, with tabs along the top for Inventory,
     /// Crafting, Skills, Factions and Your Gang, each filling the same block. Lays the panel out and moves the existing
-    /// pieces into their tabs when the game starts (the inventory grid, item details and vitals; the hand
-    /// crafting list; the gang panel). The scrip card (<see cref="EconomyHUD"/>) sits in the Inventory tab's
-    /// bottom-left corner, mirroring the vitals in the bottom-right. While it's open the rest of the HUD
-    /// (clock, crosshair, prompts, feed, utilities, hotbar) is hidden; the hotbar's slots are the grid's top row.
+    /// pieces into their tabs when the game starts (the inventory grid and item details; the hand crafting
+    /// list; the gang panel). The scrip card (<see cref="EconomyHUD"/>) sits in the Inventory tab's
+    /// bottom-left corner. While it's open the rest of the HUD (crosshair, prompts, feed, utilities, hotbar)
+    /// is hidden, except the day and time (top-left) and the vitals (bottom-right); the hotbar's slots are
+    /// the grid's top row.
     /// </summary>
     [DefaultExecutionOrder(-50)]
     public class PlayerMenuUI : MonoBehaviour
@@ -21,8 +22,6 @@ namespace ThePitt.UI
         [SerializeField] private RectTransform craftingPanel;
         [SerializeField] private GangRelationsUI gangs;
         [SerializeField] private SkillsUI skills;
-        [Tooltip("The health/hunger/thirst bars, moved into the Inventory tab.")]
-        [SerializeField] private RectTransform vitals;
         [Tooltip("HUD pieces hidden while the menu is open. Defaults to the crosshair, prompts, feeds and banners.")]
         [SerializeField] private List<GameObject> hideWhileOpen = new();
 
@@ -43,7 +42,7 @@ namespace ThePitt.UI
         private HotbarUI hotbarUI;
 
         public const float Margin = 33f, TabBarHeight = 56f, ContentTop = 88f;
-        /// <summary>Width of the scrip card and the vitals, in the Inventory tab's bottom corners.</summary>
+        /// <summary>Width of the scrip card, in the Inventory tab's bottom-left corner.</summary>
         public const float CornerWidth = 320f;
 
         private void Awake()
@@ -51,7 +50,6 @@ namespace ThePitt.UI
             if (inventory == null) inventory = GetComponent<InventoryUI>();
             if (panel == null) panel = Find<RectTransform>("InventoryPanel");
             if (craftingPanel == null) craftingPanel = Find<RectTransform>("InventoryPanel/CraftingSubPanel");
-            if (vitals == null) vitals = Find<RectTransform>("Vitals");
             if (gangs == null) gangs = GetComponent<GangRelationsUI>();
             hotbarUI = FindAnyObjectByType<HotbarUI>();
             if (skills == null) skills = GetComponent<SkillsUI>();
@@ -62,7 +60,7 @@ namespace ThePitt.UI
                     var t = transform.Find(name);
                     if (t != null) hideWhileOpen.Add(t.gameObject);
                 }
-            // The time is only shown in the menu, on the scrip card (EconomyHUD), not on the HUD.
+            // The day and time are on a card in the top-left (EconomyHUD) instead.
             var clock = transform.Find("Clock");
             if (clock != null) clock.gameObject.SetActive(false);
             if (panel == null) return;
@@ -191,7 +189,7 @@ namespace ThePitt.UI
             }
         }
 
-        /// <summary>The slot grid at 1.5x across the top, item details below it, vitals beside them.</summary>
+        /// <summary>The slot grid at 1.5x across the top, item details below it beside the scrip card.</summary>
         private void LayOutInventory()
         {
             var grid = panel.Find("Grid") as RectTransform;
@@ -222,23 +220,16 @@ namespace ThePitt.UI
             if (details != null)
             {
                 details.SetParent(inventoryTab, false);
-                // Between the scrip card (bottom-left) and the vitals (bottom-right).
+                // Right of the scrip card (bottom-left).
                 details.anchorMin = details.anchorMax = details.pivot = Vector2.zero;
                 details.anchoredPosition = new Vector2(CornerWidth + 30f, 0f);
-                details.sizeDelta = new Vector2(panelSize.x - Margin * 2f - (CornerWidth + 30f) * 2f, 210f);
+                details.sizeDelta = new Vector2(panelSize.x - Margin * 2f - (CornerWidth + 30f), 210f);
                 var text = details.GetComponent<Text>();
                 if (text != null) text.fontSize = 24;
             }
-
-            if (vitals != null)
-            {
-                vitals.SetParent(inventoryTab, false);
-                vitals.anchorMin = vitals.anchorMax = vitals.pivot = new Vector2(1f, 0f);
-                vitals.anchoredPosition = new Vector2(0f, 20f);
-            }
         }
 
-        /// <summary>Puts the scrip card in the Inventory tab's bottom-left corner, level with the vitals.</summary>
+        /// <summary>Puts the scrip card in the Inventory tab's bottom-left corner.</summary>
         public void HostScripCard(RectTransform card)
         {
             if (inventoryTab == null) return;

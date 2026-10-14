@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Items.ItemDefinition
   displayName: Scrap Shovel
   description: A pipe handle with a sheet of scrap hammered flat on the end. Digs through the corpse piles dumped in the alleys; strike the glint of rot and the pile gives way faster.
-  category: 5
+  category: 7
   icon: {fileID: -22791154175553670, guid: 88b94353959f3d8df9172408a4d9cb19, type: 3}
   maxStack: 1
   baseValue: 20

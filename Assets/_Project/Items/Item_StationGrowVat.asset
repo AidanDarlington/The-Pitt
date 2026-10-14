@@ -16,12 +16,13 @@ MonoBehaviour:
   description: A hydroponic tray on a frame with its own grow light.
   category: 6
   icon: {fileID: -5472793920410365643, guid: b4770b5e2d7258427b02ae722e8a36e1, type: 3}
-  maxStack: 3
+  maxStack: 1
   baseValue: 30
   hasQuality: 0
   nutrition: 0
   hydration: 0
   healthEffect: 0
+  worldModel: {fileID: 0}
   placeablePrefab: {fileID: 6785500124349822428, guid: a69c7830608a9b00fb3084ea38974b0f, type: 3}
   utilityDraw: {x: 2, y: 2, z: 0}
   effectMinutes: 0
@@ -37,3 +38,5 @@ MonoBehaviour:
   magazineSize: 1
   reloadSeconds: 1.5
   spread: 1.5
+  toolType: 0
+  gatherPower: 10

@@ -16,12 +16,13 @@ MonoBehaviour:
   description: A scrap-built bench with a vise and pegboard. Builds every other station.
   category: 6
   icon: {fileID: -7358301700424772239, guid: cd0b6222a1abe46518436dc200cb9928, type: 3}
-  maxStack: 3
+  maxStack: 1
   baseValue: 30
   hasQuality: 0
   nutrition: 0
   hydration: 0
   healthEffect: 0
+  worldModel: {fileID: 0}
   placeablePrefab: {fileID: 6079136151961247706, guid: 4064fb8d81962502cbbbe43e8386019e, type: 3}
   utilityDraw: {x: 0, y: 1, z: 0}
   effectMinutes: 0
@@ -37,3 +38,5 @@ MonoBehaviour:
   magazineSize: 1
   reloadSeconds: 1.5
   spread: 1.5
+  toolType: 0
+  gatherPower: 10

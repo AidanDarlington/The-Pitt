@@ -22,4 +22,5 @@ MonoBehaviour:
     amount: 3
   output: {fileID: 11400000, guid: 8611722c123f522d4850c59041b62400, type: 2}
   outputAmount: 1
-  craftMinutes: 0
+  craftSeconds: 0
+  craftMinutes: -1

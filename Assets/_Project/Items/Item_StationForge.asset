@@ -16,12 +16,13 @@ MonoBehaviour:
   description: Brick furnace and anvil. Turns scrap into springs and pipe barrels.
   category: 6
   icon: {fileID: 6059490519392906969, guid: b3b99735a3cbd63d4b267a5e24f1268c, type: 3}
-  maxStack: 3
+  maxStack: 1
   baseValue: 50
   hasQuality: 0
   nutrition: 0
   hydration: 0
   healthEffect: 0
+  worldModel: {fileID: 0}
   placeablePrefab: {fileID: 3683979387852356567, guid: f349ebec76ed149a58f6c025e9563aac, type: 3}
   utilityDraw: {x: 0, y: 1, z: 2}
   effectMinutes: 0
@@ -37,3 +38,5 @@ MonoBehaviour:
   magazineSize: 1
   reloadSeconds: 1.5
   spread: 1.5
+  toolType: 0
+  gatherPower: 10

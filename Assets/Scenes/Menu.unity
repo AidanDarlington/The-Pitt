@@ -149,6 +149,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ThePitt.UI.MainMenuUI
   worldPrefab: {fileID: 1230900344981164291, guid: c922e2042e36cd36ab1f54da57e8f6a4, type: 3}
+  inGame: 0
+  actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
 --- !u!4 &1057657471
 Transform:
   m_ObjectHideFlags: 0

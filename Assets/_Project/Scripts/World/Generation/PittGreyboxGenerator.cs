@@ -1029,7 +1029,13 @@ namespace ThePitt.World.Generation
                 else kept.Add(a);
             }
             alleys = kept;
+            if (Since(3))
+            {
+                FillAlleysAlongsideWalkways(lots);
+                FillAlleysBesideStairs(lots);
+            }
             var pits = FillAlleyPits();
+            if (Since(4)) pits.AddRange(FillUnreachableAlleys());
             foreach (var a in alleys)
             {
                 alleyIndex.Add(a);
@@ -1053,6 +1059,165 @@ namespace ThePitt.World.Generation
 
         /// <summary>Narrowest gap the player can stand in.</summary>
         private const float PlayerGap = 0.9f;
+
+        /// <summary>
+        /// Builds over every piece of small alley the player can't walk into: ones whose way out was plugged or
+        /// built over (an alley branching off another alley that's gone), or that only meet the streets across a
+        /// terrace wall. Floods out from the streets, squares and other open ground through alley pieces at the
+        /// same level; whatever it doesn't reach is returned (and taken out of <see cref="alleys"/>) to be built on.
+        /// Run after <see cref="FillAlleyPits"/>, which leaves each piece level. Uses no randomness.
+        /// </summary>
+        private static List<Rect> FillUnreachableAlleys()
+        {
+            const float touch = 0.3f, level = 0.3f;
+            var open = new List<Rect>();
+            foreach (var s in segments) open.Add(s.rect);
+            foreach (var sq in g.gangSquares) open.Add(sq.rect);
+            open.AddRange(g.sumpSquares);
+            foreach (var o in g.watcherOutposts) open.Add(o.landing);
+
+            int n = alleys.Count;
+            var heights = new float[n];
+            for (int i = 0; i < n; i++) heights[i] = g.HeightAt(alleys[i].center);
+            var reached = new bool[n];
+            var queue = new Queue<int>();
+            for (int i = 0; i < n; i++)
+            {
+                var grown = Grow(alleys[i], touch);
+                bool root = false;
+                foreach (var r in open)
+                {
+                    if (!grown.Overlaps(r)) continue;
+                    var contact = Rect.MinMaxRect(Mathf.Max(grown.xMin, r.xMin), Mathf.Max(grown.yMin, r.yMin),
+                        Mathf.Min(grown.xMax, r.xMax), Mathf.Min(grown.yMax, r.yMax)).center;
+                    if (Mathf.Abs(g.HeightAt(contact) - heights[i]) < level) { root = true; break; }
+                }
+                // The pit's rim and anything else open that isn't a rect: just past the middle of each side.
+                if (!root)
+                {
+                    var a = alleys[i];
+                    foreach (var p in new[] { new Vector2(a.xMin - touch, a.center.y), new Vector2(a.xMax + touch, a.center.y),
+                                 new Vector2(a.center.x, a.yMin - touch), new Vector2(a.center.x, a.yMax + touch) })
+                        if (g.IsOpen(p) && Mathf.Abs(g.HeightAt(p) - heights[i]) < level) root = true;
+                }
+                if (!root) continue;
+                reached[i] = true;
+                queue.Enqueue(i);
+            }
+            while (queue.Count > 0)
+            {
+                int i = queue.Dequeue();
+                var grown = Grow(alleys[i], touch);
+                for (int j = 0; j < n; j++)
+                {
+                    if (reached[j] || !grown.Overlaps(alleys[j]) || Mathf.Abs(heights[i] - heights[j]) >= level) continue;
+                    reached[j] = true;
+                    queue.Enqueue(j);
+                }
+            }
+
+            var kept = new List<Rect>();
+            var sealedOff = new List<Rect>();
+            for (int i = 0; i < n; i++) (reached[i] ? kept : sealedOff).Add(alleys[i]);
+            alleys = kept;
+            return sealedOff;
+        }
+
+        /// <summary>
+        /// Every small alley that would open onto a terrace stairway is built over instead, so nothing opens off
+        /// the side of a flight (a gap beside the steps is a hole to fall into). The stairs aren't built until
+        /// later and roll their own tread, so this takes the most room each could use: the longest flight
+        /// with a mid landing, plus the landing over the edge. Uses no randomness.
+        /// </summary>
+        private static void FillAlleysBesideStairs(List<Rect> lots)
+        {
+            var reach = new List<Rect>();
+            float h = g.HalfSize;
+            foreach (var pl in g.terraces)
+            {
+                var r = pl.rect;
+                var edges = new (float line, bool alongX, Vector2 normal, float from, float to)[]
+                {
+                    (r.yMin, true, Vector2.down, Mathf.Max(r.xMin, -h), Mathf.Min(r.xMax, h)),
+                    (r.yMax, true, Vector2.up, Mathf.Max(r.xMin, -h), Mathf.Min(r.xMax, h)),
+                    (r.xMin, false, Vector2.left, Mathf.Max(r.yMin, -h), Mathf.Min(r.yMax, h)),
+                    (r.xMax, false, Vector2.right, Mathf.Max(r.yMin, -h), Mathf.Min(r.yMax, h)),
+                };
+                foreach (var e in edges)
+                {
+                    if (Mathf.Abs(e.line) >= h || e.to <= e.from) continue;
+                    // The same crossings BuildHeights puts stairs at: streets crossing the edge square-on, built
+                    // from the higher side.
+                    foreach (var sg in segments)
+                    {
+                        if (sg.alongX == e.alongX) continue;
+                        var sr = sg.rect;
+                        float cross0 = e.alongX ? sr.xMin : sr.yMin, cross1 = e.alongX ? sr.xMax : sr.yMax;
+                        float span0 = e.alongX ? sr.yMin : sr.xMin, span1 = e.alongX ? sr.yMax : sr.xMax;
+                        if (cross1 < e.from || cross0 > e.to || e.line < span0 || e.line > span1) continue;
+                        var crossMid = e.alongX ? new Vector2((cross0 + cross1) / 2f, e.line) : new Vector2(e.line, (cross0 + cross1) / 2f);
+                        float rise = pl.height - g.HeightAt(crossMid + e.normal * 1.5f);
+                        if (rise < 0.3f) continue;
+                        bool lowIsPositive = e.normal.x + e.normal.y > 0f;
+                        float room = lowIsPositive ? (e.alongX ? sr.yMax : sr.xMax) - e.line : e.line - (e.alongX ? sr.yMin : sr.xMin);
+                        // Longest it could roll: the widest tread and a mid landing, but never past the street's room.
+                        float run = Mathf.Min(Mathf.CeilToInt(rise / StepHeight) * 0.45f + (rise > 3.2f ? 2.2f : 0f), Mathf.Max(0f, room - 0.5f));
+                        float near = -0.9f, far = run + 0.5f;
+                        reach.Add(e.alongX
+                            ? (lowIsPositive ? Rect.MinMaxRect(cross0, e.line + near, cross1, e.line + far) : Rect.MinMaxRect(cross0, e.line - far, cross1, e.line - near))
+                            : (lowIsPositive ? Rect.MinMaxRect(e.line + near, cross0, e.line + far, cross1) : Rect.MinMaxRect(e.line - far, cross0, e.line - near, cross1)));
+                    }
+                }
+            }
+
+            var kept = new List<Rect>();
+            foreach (var a in alleys)
+            {
+                bool opensOnto = false;
+                // Touching a stairway's side counts: that's where its mouth would be.
+                foreach (var z in reach) opensOnto |= Grow(z, 0.4f).Overlaps(a);
+                if (opensOnto) lots.Add(a);
+                else kept.Add(a);
+            }
+            alleys = kept;
+        }
+
+        /// <summary>Less than this between a small alley and a bigger walkway running alongside it and they read as one.</summary>
+        private const float AlleyClearance = 3.5f;
+
+        /// <summary>
+        /// A small alley shouldn't run right alongside a street, thoroughfare or gang square, with no more than a
+        /// sliver of building between (or none). Any that does, along at least a quarter of its length, is built
+        /// over instead. Uses no randomness.
+        /// </summary>
+        private static void FillAlleysAlongsideWalkways(List<Rect> lots)
+        {
+            var bigger = new List<Rect>();
+            foreach (var s in segments) bigger.Add(s.rect);
+            foreach (var sq in g.gangSquares) bigger.Add(sq.rect);
+            var kept = new List<Rect>();
+            foreach (var a in alleys)
+            {
+                bool alongX = a.width > a.height;
+                float length = alongX ? a.width : a.height;
+                bool alongside = false;
+                foreach (var r in bigger)
+                {
+                    float overlap = alongX ? Mathf.Min(a.xMax, r.xMax) - Mathf.Max(a.xMin, r.xMin) : Mathf.Min(a.yMax, r.yMax) - Mathf.Max(a.yMin, r.yMin);
+                    if (overlap < length * 0.25f) continue;
+                    // The strip between them, across the alley's run (negative if they overlap).
+                    float gap = alongX ? Mathf.Max(r.yMin - a.yMax, a.yMin - r.yMax) : Mathf.Max(r.xMin - a.xMax, a.xMin - r.xMax);
+                    if (gap < AlleyClearance)
+                    {
+                        alongside = true;
+                        break;
+                    }
+                }
+                if (alongside) lots.Add(a);
+                else kept.Add(a);
+            }
+            alleys = kept;
+        }
 
         /// <summary>
         /// Alleys cross terrace edges with no stairs (only streets get those), so the stretch below a retaining
@@ -2058,7 +2223,8 @@ namespace ThePitt.World.Generation
         /// <summary>
         /// Retaining walls along the terrace edges, with stairs where streets cross them. Each edge is built from
         /// its higher side: a wall from below the lower ground up to a parapet a metre above the higher, and
-        /// stairs on the street below, climbing to the edge.
+        /// stairs on the street below, climbing to the edge. From version 3 no small alley opens off the side of a
+        /// flight (see <see cref="FillAlleysBesideStairs"/>).
         /// </summary>
         private static void BuildHeights(Transform root)
         {

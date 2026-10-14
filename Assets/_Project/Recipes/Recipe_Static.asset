@@ -20,4 +20,6 @@ MonoBehaviour:
     amount: 3
   output: {fileID: 11400000, guid: 3c778ae76050cdb85a242cc650af32a6, type: 2}
   outputAmount: 2
-  craftMinutes: 90
+  craftSeconds: 55
+  craftMinutes: -1
+  exactIngredients: 0

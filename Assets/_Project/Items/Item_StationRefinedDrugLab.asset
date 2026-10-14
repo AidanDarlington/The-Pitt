@@ -16,12 +16,13 @@ MonoBehaviour:
   description: Cleaner glass and better seals. Works half again as fast.
   category: 6
   icon: {fileID: -465942004592746973, guid: 385c293195ef1315fae401013a1fbb2d, type: 3}
-  maxStack: 3
+  maxStack: 1
   baseValue: 100
   hasQuality: 0
   nutrition: 0
   hydration: 0
   healthEffect: 0
+  worldModel: {fileID: 0}
   placeablePrefab: {fileID: 8589605706459461285, guid: c95bd3bebf70a9274b9e6008e9519b0f, type: 3}
   utilityDraw: {x: 1, y: 3, z: 1}
   effectMinutes: 0

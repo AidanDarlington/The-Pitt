@@ -18,7 +18,7 @@ namespace ThePitt.Production
         private static readonly HashSet<ItemDefinition> discovered = new();
         private static readonly HashSet<CraftingStation> stations = new();
         private static List<RecipeDefinition> catalogue;
-        private static HashSet<RecipeDefinition> signatures;
+        private static HashSet<RecipeDefinition> taught;
 
         public static IReadOnlyCollection<ItemDefinition> Discovered => discovered;
         public static IReadOnlyCollection<CraftingStation> Stations => stations;
@@ -71,7 +71,7 @@ namespace ThePitt.Production
 
         /// <summary>
         /// The recipes worth showing, in order: unlocked ones first, then partly known ones (which a list
-        /// shows greyed out). Gang recipes not yet learned are left out; lists only pass in ones they offer.
+        /// shows greyed out). Gang and skill tree recipes not yet learned are left out; lists only pass in ones they offer.
         /// </summary>
         public static List<RecipeDefinition> Visible(IEnumerable<RecipeDefinition> recipes)
         {
@@ -107,8 +107,8 @@ namespace ThePitt.Production
         private static void Announce(RecipeDefinition recipe)
         {
             if (!IsUnlocked(recipe)) return;
-            // Gang recipes stay secret until learned from the gang.
-            if (Signatures().Contains(recipe) && !RecipeBook.Knows(recipe)) return;
+            // Gang recipes stay secret until learned from the gang, skill tree recipes until the milestone is taken.
+            if (Taught().Contains(recipe) && !RecipeBook.Knows(recipe)) return;
             Unlocked?.Invoke(recipe);
         }
 
@@ -142,14 +142,18 @@ namespace ThePitt.Production
             return catalogue;
         }
 
-        private static HashSet<RecipeDefinition> Signatures()
+        /// <summary>Recipes only learned, never found: gang signature recipes and skill tree milestones.</summary>
+        private static HashSet<RecipeDefinition> Taught()
         {
-            if (signatures != null) return signatures;
-            signatures = new HashSet<RecipeDefinition>();
+            if (taught != null) return taught;
+            taught = new HashSet<RecipeDefinition>();
             if (SaveRegistry.Instance != null)
                 foreach (var asset in SaveRegistry.Instance.Assets)
-                    if (asset is FactionDefinition f && f.SignatureRecipe != null) signatures.Add(f.SignatureRecipe);
-            return signatures;
+                    if (asset is FactionDefinition f && f.SignatureRecipe != null) taught.Add(f.SignatureRecipe);
+            foreach (var skill in Progression.Skills.All)
+                foreach (var milestone in Progression.Skills.Milestones(skill))
+                    if (milestone.Recipe != null) taught.Add(milestone.Recipe);
+            return taught;
         }
 
         // Statics survive between play sessions when domain reload is off in the editor.
@@ -159,7 +163,7 @@ namespace ThePitt.Production
             discovered.Clear();
             stations.Clear();
             catalogue = null;
-            signatures = null;
+            taught = null;
         }
     }
 }

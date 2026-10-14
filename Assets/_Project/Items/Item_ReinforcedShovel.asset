@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Items.ItemDefinition
   displayName: Reinforced Shovel
   description: A scrap shovel with a slag-steel edge. Cuts through corpse piles far faster.
-  category: 5
+  category: 7
   icon: {fileID: 4363957696466244999, guid: 37a6087460357fa299d85e53e65c4953, type: 3}
   maxStack: 1
   baseValue: 60

@@ -65,9 +65,9 @@ namespace ThePitt.UI
                 foreach (var i in recipe.Ingredients)
                 {
                     if (i.item == null) continue;
-                    int have = inventory.Count(i.item);
+                    int have = recipe.Have(inventory, i);
                     var color = ColorUtility.ToHtmlStringRGB(have >= i.amount ? haveColor : missingColor);
-                    parts.Append($"{i.item.DisplayName} <color=#{color}>{have}/{i.amount}</color>\n");
+                    parts.Append($"{recipe.IngredientName(i)} <color=#{color}>{have}/{i.amount}</color>\n");
                 }
                 row.GetComponentInChildren<Text>().text = $"<b>{recipe.DisplayName}</b>\n<size=21>{parts}</size>";
 

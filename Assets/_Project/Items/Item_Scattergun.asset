@@ -16,7 +16,7 @@ MonoBehaviour:
   description: 'Two pipe barrels welded side by side. The Rust Bandits'' answer to most questions: point it in a doorway and pull both.'
   category: 2
   icon: {fileID: -6226222275705975108, guid: 7663a618633b096b9b94d341d8cf4883, type: 3}
-  maxStack: 3
+  maxStack: 1
   baseValue: 140
   hasQuality: 1
   nutrition: 0

@@ -16,12 +16,13 @@ MonoBehaviour:
   description: A slag-steel footlocker with a hasp. Holds 6 stacks.
   category: 6
   icon: {fileID: -631851346645340526, guid: b2deb6287e7eb69a4bffa49efbe18ce9, type: 3}
-  maxStack: 3
+  maxStack: 1
   baseValue: 20
   hasQuality: 0
   nutrition: 0
   hydration: 0
   healthEffect: 0
+  worldModel: {fileID: 0}
   placeablePrefab: {fileID: 4200853471107727338, guid: eaf55c5c69b9a5a3994b027b44e57bfe, type: 3}
   utilityDraw: {x: 0, y: 0, z: 0}
   effectMinutes: 0

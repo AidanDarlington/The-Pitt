@@ -39,7 +39,7 @@ namespace ThePitt.Player
         {
             if (lamp == null) return;
             if (atmosphere != null) lamp.color = Color.Lerp(baseColor, baseColor * atmosphere.CurrentHue, districtTint);
-            if (!toggle.WasPressedThisFrame()) return;
+            if (!toggle.WasPressedThisFrame() || ThePitt.UI.TextEntry.Active) return;
             lamp.enabled = !lamp.enabled;
             if (clickSound != null) clickSound.Play();
             else ThePitt.Audio.AudioManager.Play2D(ThePitt.Audio.AudioManager.Library?.click, 0.4f);

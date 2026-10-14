@@ -4,7 +4,10 @@ using UnityEngine;
 
 namespace ThePitt.Production
 {
-    /// <summary>A switchable lamp that provides light to planters. Will draw power once utilities exist.</summary>
+    /// <summary>
+    /// A switchable lamp that provides light to planters. On, its panel glows white; off, it's a dull grey
+    /// panel, so which it is reads at a glance.
+    /// </summary>
     public class GrowLight : MonoBehaviour, IInteractable, ISaveState
     {
         [SerializeField] private bool isOn = true;
@@ -12,9 +15,13 @@ namespace ThePitt.Production
         [SerializeField, Range(0f, 1f)] private float level = 0.85f;
         [SerializeField] private Light lamp;
         [SerializeField] private Renderer bulb;
-        [SerializeField] private Color onEmission = new Color(1f, 0.55f, 0.85f) * 2f;
+        [Tooltip("The panel's glow while on.")]
+        [SerializeField] private Color glow = new Color(1f, 0.97f, 0.92f) * 2.4f;
+        [SerializeField] private Color onColour = Color.white;
+        [SerializeField] private Color offColour = new(0.16f, 0.16f, 0.17f);
 
         private static readonly int EmissionColor = Shader.PropertyToID("_EmissionColor");
+        private static readonly int BaseColor = Shader.PropertyToID("_BaseColor");
         private MaterialPropertyBlock block;
 
         public bool IsOn => isOn;
@@ -46,7 +53,8 @@ namespace ThePitt.Production
             {
                 block ??= new MaterialPropertyBlock();
                 bulb.GetPropertyBlock(block);
-                block.SetColor(EmissionColor, isOn ? onEmission : Color.black);
+                block.SetColor(BaseColor, isOn ? onColour : offColour);
+                block.SetColor(EmissionColor, isOn ? glow : Color.black);
                 bulb.SetPropertyBlock(block);
             }
         }

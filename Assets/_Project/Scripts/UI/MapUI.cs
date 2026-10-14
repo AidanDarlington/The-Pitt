@@ -10,8 +10,9 @@ namespace ThePitt.UI
 {
     /// <summary>
     /// Full-screen top-down map of The Pitt (toggle with the Map action), with the player's position and
-    /// facing. Three views, picked with the tabs above the legend, each showing only its own layer: the map
-    /// itself with district and place names, the properties, and the factions (gang turf and the Watchers).
+    /// facing as a green arrow. Three views, picked with the tabs above the legend, each showing only its own
+    /// layer: the map itself with district and place names, the properties, and the factions (gang turf and
+    /// the Watchers). Opens on whichever view was picked last.
     /// </summary>
     public class MapUI : MonoBehaviour
     {
@@ -36,9 +37,12 @@ namespace ThePitt.UI
 
         public enum View { Map, Properties, Factions }
 
+        private const string ViewKey = "MapView";
+        private static readonly Color PlayerColor = new(0.35f, 1f, 0.4f);
+
         private InputAction toggle;
         private bool labelsBuilt;
-        private View view = View.Map;
+        private View view;
         private RectTransform districtLayer, propertyLayer, factionLayer;
         private readonly List<(View view, Image background, Text text)> tabs = new();
         private readonly List<GameObject> labels = new();
@@ -58,7 +62,9 @@ namespace ThePitt.UI
             labelTemplate.gameObject.SetActive(false);
             panel.SetActive(false);
             if (hotbarUI == null) hotbarUI = FindAnyObjectByType<HotbarUI>();
+            view = (View)Mathf.Clamp(PlayerPrefs.GetInt(ViewKey, 0), 0, 2);
             BuildTabs();
+            MakeArrow();
         }
 
         private void Start()
@@ -92,8 +98,8 @@ namespace ThePitt.UI
             if (open && !labelsBuilt) BuildLabels();
             if (open && territoryDirty) RefreshTerritory();
             if (open) RefreshPropertyLabels();
-            // Always opens on the plain map.
-            if (open) SetView(View.Map);
+            // Opens on the view picked last.
+            if (open) SetView(view);
             panel.SetActive(open);
             if (hotbarUI != null) hotbarUI.SetVisible(!open);
             // The map takes over like the inventory: no walking or looking while it's up.
@@ -129,6 +135,68 @@ namespace ThePitt.UI
             // North (+Z) is up on the map; the marker points the way the player faces.
             playerMarker.localRotation = Quaternion.Euler(0f, 0f, -player.eulerAngles.y);
         }
+
+        /// <summary>Turns the marker into a green arrow, with a dark one behind it so it shows on light streets.</summary>
+        private void MakeArrow()
+        {
+            if (playerMarker == null) return;
+            var sprite = ArrowSprite();
+            var halo = playerMarker.Find("Halo") as RectTransform;
+            var body = playerMarker.Find("Body") as RectTransform;
+            var facing = playerMarker.Find("Facing");
+            if (facing != null) facing.gameObject.SetActive(false);
+            if (halo != null && halo.TryGetComponent<Image>(out var haloImage))
+            {
+                haloImage.sprite = sprite;
+                haloImage.color = new Color(0f, 0f, 0f, 0.85f);
+                halo.anchoredPosition = Vector2.zero;
+                halo.localRotation = Quaternion.identity;
+                halo.sizeDelta = new Vector2(30f, 30f);
+            }
+            if (body != null && body.TryGetComponent<Image>(out var bodyImage))
+            {
+                bodyImage.sprite = sprite;
+                bodyImage.color = PlayerColor;
+                body.anchoredPosition = Vector2.zero;
+                // The old diamond was a square turned 45°.
+                body.localRotation = Quaternion.identity;
+                body.sizeDelta = new Vector2(22f, 22f);
+            }
+        }
+
+        /// <summary>A navigation arrow pointing up: a triangle with a notch cut into its base.</summary>
+        private static Sprite ArrowSprite()
+        {
+            const int size = 64;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+            Vector2 tip = new(0.5f, 0.97f), left = new(0.1f, 0.05f), notch = new(0.5f, 0.3f), right = new(0.9f, 0.05f);
+            var px = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                // 4x4 samples per pixel for smooth edges.
+                int inside = 0;
+                for (int sy = 0; sy < 4; sy++)
+                for (int sx = 0; sx < 4; sx++)
+                {
+                    var p = new Vector2((x + (sx + 0.5f) / 4f) / size, (y + (sy + 0.5f) / 4f) / size);
+                    if (InTriangle(p, tip, left, notch) || InTriangle(p, tip, notch, right)) inside++;
+                }
+                px[y * size + x] = new Color32(255, 255, 255, (byte)(inside * 255 / 16));
+            }
+            tex.SetPixels32(px);
+            tex.Apply();
+            return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
+        }
+
+        private static bool InTriangle(Vector2 p, Vector2 a, Vector2 b, Vector2 c)
+        {
+            float d1 = Cross(p, a, b), d2 = Cross(p, b, c), d3 = Cross(p, c, a);
+            bool neg = d1 < 0f || d2 < 0f || d3 < 0f, pos = d1 > 0f || d2 > 0f || d3 > 0f;
+            return !(neg && pos);
+        }
+
+        private static float Cross(Vector2 p, Vector2 a, Vector2 b) => (p.x - b.x) * (a.y - b.y) - (a.x - b.x) * (p.y - b.y);
 
         private void BuildLabels()
         {
@@ -191,6 +259,7 @@ namespace ThePitt.UI
 
         public void SetView(View next)
         {
+            if (next != view) PlayerPrefs.SetInt(ViewKey, (int)next);
             view = next;
             if (districtLayer != null) districtLayer.gameObject.SetActive(view == View.Map);
             if (propertyLayer != null) propertyLayer.gameObject.SetActive(view == View.Properties);
@@ -245,34 +314,43 @@ namespace ThePitt.UI
             }
         }
 
-        /// <summary>The streets and buildings key, plus whatever the view shows.</summary>
+        /// <summary>The selected view's own keys first, then the streets and buildings key every view shares.</summary>
         private static string LegendText(View view)
         {
             var sb = new System.Text.StringBuilder("<b>LEGEND</b>\n\n");
+            string you = $"<color=#{ColorUtility.ToHtmlStringRGB(PlayerColor)}>▲</color>  You\n";
+            switch (view)
+            {
+                case View.Properties:
+                    sb.Append($"<color=#{ColorUtility.ToHtmlStringRGB(OwnedColor)}>{OwnedKey}</color>  Your property\n");
+                    sb.Append($"<color=#{ColorUtility.ToHtmlStringRGB(ForSaleColor)}>{ForSaleKey}</color>  For sale\n");
+                    sb.Append(you).Append('\n');
+                    break;
+                case View.Factions:
+                    sb.Append("<color=#C0B8A8>■</color>  Gang territory (tinted)\n");
+                    sb.Append("<color=#F2F7FF>■</color>  Watcher ground\n");
+                    sb.Append("<color=#ECF2FF>■</color>  Watcher outposts\n");
+                    sb.Append(you).Append('\n');
+                    break;
+                default:
+                    sb.Append(you);
+                    sb.Append("───  District border\n");
+                    sb.Append("<color=#F2D966>▼</color>  Sump shaft\n\n");
+                    break;
+            }
             sb.Append("<color=#D8D4CC>■</color>  Thoroughfares\n");
             sb.Append("<color=#B0ACA4>■</color>  Secondary alleys\n");
             sb.Append("<color=#8A8680>■</color>  Small alleys\n");
             sb.Append("<color=#141414>■</color>  Buildings\n");
             sb.Append("<color=#C8A060>■</color>  Raised catwalks\n");
             sb.Append("<color=#806040>■</color>  Scrap pit\n");
-            sb.Append("<color=#ECF2FF>■</color>  Watcher outposts\n");
-            if (view == View.Properties)
-            {
-                sb.Append($"<color=#{ColorUtility.ToHtmlStringRGB(OwnedColor)}>{OwnedKey}</color>  Your property\n");
-                sb.Append($"<color=#{ColorUtility.ToHtmlStringRGB(ForSaleColor)}>{ForSaleKey}</color>  For sale\n");
-            }
-            if (view == View.Factions)
-            {
-                sb.Append("<color=#C0B8A8>■</color>  Gang territory (tinted)\n");
-                sb.Append("<color=#F2F7FF>■</color>  Watcher ground\n");
-            }
-            sb.Append("───  District border\n\n");
-            sb.Append("◆  You\n\n");
-            sb.Append("<color=#8A8680>M / Esc to close</color>");
+            if (view != View.Factions) sb.Append("<color=#ECF2FF>■</color>  Watcher outposts\n");
+            if (view != View.Map) sb.Append("───  District border\n");
+            sb.Append("\n<color=#8A8680>M / Esc to close</color>");
             return sb.ToString();
         }
 
-        private static readonly Color OwnedColor = new(1f, 0.82f, 0.45f);
+        private static readonly Color OwnedColor = new(0.4f, 0.9f, 0.4f);
         private static readonly Color ForSaleColor = new(1f, 0.45f, 0.35f);
         private const string OwnedKey = "●";
         private const string ForSaleKey = "■";
@@ -291,8 +369,10 @@ namespace ThePitt.UI
                 string what = business != null ? business.Name.ToUpperInvariant() : null;
                 string text = p.Owned ? (what != null ? $"{OwnedKey} {what}" : OwnedKey)
                     : what != null ? $"{ForSaleKey} {what} · {p.Price}" : $"{ForSaleKey} {p.Price}";
-                var label = AddLabel(text, new Vector2(p.Entrance.x, p.Entrance.z) + Vector2.down * 6f,
-                    p.Owned ? OwnedColor : ForSaleColor, p.Owned ? 16 : 13, propertyLayer);
+                // Right on its door.
+                var label = AddLabel(text, new Vector2(p.Entrance.x, p.Entrance.z),
+                    p.Owned ? OwnedColor : ForSaleColor, p.Owned ? 20 : 13, propertyLayer);
+                if (p.Owned) label.GetComponent<Text>().fontStyle = FontStyle.Bold;
                 labels.Remove(label);
                 propertyLabels.Add(label);
             }

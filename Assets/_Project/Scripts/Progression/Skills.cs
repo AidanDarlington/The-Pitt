@@ -50,7 +50,7 @@ namespace ThePitt.Progression
     /// level takes a little more than the last (50 xp for level 2, then 30 more per level), up to <see cref="MaxLevel"/>.
     /// <list type="bullet">
     /// <item>Harvesting: 2 xp for each item taken from any node, 3 for the rarer extras, 10 more for bringing it down.</item>
-    /// <item>Crafting: 5 xp per item made plus 1 per 5 minutes it takes, to the skill of the station (forge and firearms
+    /// <item>Crafting: 5 xp per item made plus 1 per 3 seconds it takes, to the skill of the station (forge and firearms
     /// bench: weaponsmithing; stove: cooking; drug lab: drug production) or, at a workbench or by hand, of the item (weapons).</item>
     /// <item>Growing: 3 xp for planting, and for each crop harvested 3 xp more the better it was kept (3 Poor to 11 Premium).</item>
     /// </list>
@@ -273,7 +273,7 @@ namespace ThePitt.Progression
         }
 
         /// <summary>Experience for making a recipe once.</summary>
-        public static int XpFor(RecipeDefinition recipe) => 5 + recipe.CraftMinutes / 5;
+        public static int XpFor(RecipeDefinition recipe) => 5 + Mathf.FloorToInt(recipe.CraftSeconds / 3f);
 
         /// <summary>Credits a finished recipe to its skill.</summary>
         public static void Crafted(RecipeDefinition recipe)
