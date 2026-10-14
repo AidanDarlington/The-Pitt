@@ -23,7 +23,7 @@ namespace ThePitt.World
         [Tooltip("Overall multiplier on district ambient light.")]
         [SerializeField, Range(0f, 10f)] private float ambientBoost = 2.5f;
         [Tooltip("Ambient brightness on upward faces, relative to walls.")]
-        [SerializeField, Range(0f, 5f)] private float skyBias = 3f;
+        [SerializeField, Range(0f, 5f)] private float skyBias = 1.5f;
         [Tooltip("Ambient brightness on downward faces (undersides of ledges, catwalks).")]
         [SerializeField, Range(0f, 1f)] private float groundBias = 0.3f;
         [Tooltip("Exponential-squared fog. Thick enough to tint the space overhead, thin enough to see down a walkway.")]
@@ -44,8 +44,9 @@ namespace ThePitt.World
         [SerializeField, Range(0f, 1f)] private float midtoneTint = 0.15f;
         [Tooltip("Highlights lean warm, like sodium and fluorescent light.")]
         [SerializeField] private Color highlightTint = new Color(1f, 0.94f, 0.8f);
-        [Tooltip("Exposure of the grade volume; the colour filter darkens, so this compensates.")]
-        [SerializeField, Range(-3f, 5f)] private float gradeExposure = 0.3f;
+        [Tooltip("Exposure of the grade volume. Slightly negative: wall albedo is bright (it carries colour and detail), so\n" +
+                 "this sits the frame down to the Aneurism reference (mean luminance ~0.075).")]
+        [SerializeField, Range(-3f, 5f)] private float gradeExposure = -0.3f;
 
         private ColorAdjustments grade;
         private ShadowsMidtonesHighlights split;

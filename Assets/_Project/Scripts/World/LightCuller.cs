@@ -1,11 +1,14 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
 
 namespace ThePitt.World
 {
     /// <summary>
     /// Keeps the city's lamps affordable as live lights: only the nearest few dozen around the camera are on,
     /// fading out with distance so none pops. Far lamps still read through their glowing fittings and the fog.
+    /// The nearest handful also cast shadows (point-light shadows cost six shadow maps each), faded in with
+    /// distance the same way.
     /// Added to the generated city by WorldBootstrap; covers every light under it.
     /// </summary>
     public class LightCuller : MonoBehaviour
@@ -16,6 +19,12 @@ namespace ThePitt.World
         [SerializeField, Min(1f)] private float fadeLength = 15f;
         [Tooltip("At most this many lamps are on at once (the nearest).")]
         [SerializeField, Min(1)] private int maxLights = 96;
+        [Tooltip("At most this many of the nearest lamps cast shadows.")]
+        [SerializeField, Min(0)] private int maxShadowed = 6;
+        [Tooltip("Lamps beyond this cast no shadows.")]
+        [SerializeField, Min(1f)] private float shadowRange = 25f;
+        [Tooltip("Shadows fade out over this last stretch of the shadow range.")]
+        [SerializeField, Min(0.5f)] private float shadowFade = 8f;
         [Tooltip("How often the nearest set is re-picked, in seconds. Fades update every frame.")]
         [SerializeField, Min(0.02f)] private float refreshInterval = 0.2f;
 
@@ -29,6 +38,7 @@ namespace ThePitt.World
         private readonly List<Lamp> lamps = new();
         private readonly List<int> order = new();
         private readonly HashSet<int> active = new();
+        private readonly HashSet<int> shadowed = new();
         private Transform viewer;
         private float nextRefresh;
 
@@ -39,6 +49,10 @@ namespace ThePitt.World
                 if (l.type == LightType.Directional) continue;
                 lamps.Add(new Lamp { light = l, flicker = l.GetComponent<LightFlicker>(), intensity = l.intensity });
                 l.enabled = false;
+                l.shadows = LightShadows.None;
+                // Six 512 maps per shadowed lamp; the atlas (PC_RPAsset) is sized for maxShadowed of them.
+                if (l.TryGetComponent<UniversalAdditionalLightData>(out var urp))
+                    urp.additionalLightsShadowResolutionTier = UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierMedium;
             }
         }
 
@@ -55,6 +69,7 @@ namespace ThePitt.World
             }
 
             float fadeStart = range - fadeLength;
+            float shadowFadeStart = shadowRange - shadowFade;
             foreach (int i in active)
             {
                 var lamp = lamps[i];
@@ -63,6 +78,7 @@ namespace ThePitt.World
                 float fade = 1f - Mathf.Clamp01((d - fadeStart) / fadeLength);
                 if (lamp.flicker != null) lamp.flicker.Fade = fade;
                 else lamp.light.intensity = lamp.intensity * fade;
+                if (shadowed.Contains(i)) lamp.light.shadowStrength = 1f - Mathf.Clamp01((d - shadowFadeStart) / shadowFade);
             }
         }
 
@@ -73,9 +89,9 @@ namespace ThePitt.World
             float rangeSq = range * range;
             for (int i = 0; i < lamps.Count; i++)
                 if (lamps[i].light != null && (lamps[i].light.transform.position - eye).sqrMagnitude < rangeSq) order.Add(i);
-            if (order.Count > maxLights)
-                order.Sort((a, b) => (lamps[a].light.transform.position - eye).sqrMagnitude
-                    .CompareTo((lamps[b].light.transform.position - eye).sqrMagnitude));
+            // Nearest first: both the light budget and the shadow budget go to the closest.
+            order.Sort((a, b) => (lamps[a].light.transform.position - eye).sqrMagnitude
+                .CompareTo((lamps[b].light.transform.position - eye).sqrMagnitude));
 
             var keep = new HashSet<int>();
             for (int k = 0; k < order.Count && k < maxLights; k++) keep.Add(order[k]);
@@ -85,6 +101,17 @@ namespace ThePitt.World
                 if (!active.Contains(i)) lamps[i].light.enabled = true;
             active.Clear();
             active.UnionWith(keep);
+
+            float shadowRangeSq = shadowRange * shadowRange;
+            var shadowKeep = new HashSet<int>();
+            for (int k = 0; k < order.Count && shadowKeep.Count < maxShadowed; k++)
+                if ((lamps[order[k]].light.transform.position - eye).sqrMagnitude < shadowRangeSq) shadowKeep.Add(order[k]);
+            foreach (int i in shadowed)
+                if (!shadowKeep.Contains(i) && lamps[i].light != null) lamps[i].light.shadows = LightShadows.None;
+            foreach (int i in shadowKeep)
+                if (!shadowed.Contains(i)) lamps[i].light.shadows = LightShadows.Soft;
+            shadowed.Clear();
+            shadowed.UnionWith(shadowKeep);
         }
     }
 }

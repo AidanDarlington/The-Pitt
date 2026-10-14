@@ -25,11 +25,23 @@ namespace ThePitt.World.EditorTools
 
             // Outposts and doorways ask for these by name.
             var (marbleTex, marbleNormal) = PittTextureBaker.Marble(AssetFolder);
-            var marble = Textured(null, "World_Marble", new Color(0.82f, 0.82f, 0.85f), marbleTex, marbleNormal);
+            // The outposts are meant to look nothing like the matte city, so they keep a polished Lit finish.
+            var marble = Textured(null, "World_Marble", new Color(0.82f, 0.82f, 0.85f), marbleTex, marbleNormal, matte: false);
             marble.SetFloat("_Smoothness", 0.6f);
-            Mat("World_WatcherRobe", new Color(0.09f, 0.1f, 0.12f)).SetFloat("_Smoothness", 0.35f);
-            Mat("World_WatcherMask", new Color(0.95f, 0.95f, 0.97f)).SetFloat("_Smoothness", 0.85f);
+            Mat("World_WatcherRobe", new Color(0.09f, 0.1f, 0.12f), matte: false).SetFloat("_Smoothness", 0.35f);
+            Mat("World_WatcherMask", new Color(0.95f, 0.95f, 0.97f), matte: false).SetFloat("_Smoothness", 0.85f);
             Mat("World_DoorVoid", new Color(0.008f, 0.008f, 0.008f));
+            // Terrace stairs and landings: the street's own asphalt carried up the flight. Shaded exactly as the
+            // terrain shades its ground layer, so steps and street match in any light: the same PBR model (Lit),
+            // the layer's 2.5x diffuse remap as the tint, smoothness from the albedo's alpha (the layer's
+            // smoothness source), no metal, a 4 m tile.
+            var (asphaltTex, asphaltNormal) = PittTextureBaker.Asphalt(AssetFolder);
+            var asphalt = Textured(null, "World_Asphalt", new Color(2.5f, 2.5f, 2.5f), asphaltTex, asphaltNormal, matte: false);
+            asphalt.SetFloat("_Smoothness", 1f);
+            asphalt.SetFloat("_SmoothnessTextureChannel", 1f);
+            asphalt.EnableKeyword("_SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A");
+            asphalt.SetTextureScale("_BaseMap", Vector2.one / 4f);
+            asphalt.SetTextureScale("_BumpMap", Vector2.one / 4f);
             g.terminalScreen = AssetDatabase.LoadAssetAtPath<Material>("Assets/_Project/Materials/WatcherTerminal_Screen.mat");
             if (g.itemRegistry == null)
             {
@@ -192,28 +204,43 @@ namespace ThePitt.World.EditorTools
             weight = weight,
         };
 
-        private static Material Mat(string name, Color color, float metallic = 0f)
+        /// <summary>
+        /// A world material. Matte ones are Simple Lit with no specular or reflections: flat, painted-looking
+        /// surfaces where the texture carries the detail and the coloured lights fall across it softly.
+        /// </summary>
+        private static Material Mat(string name, Color color, float metallic = 0f, bool matte = true)
         {
             string path = $"{AssetFolder}/{name}.mat";
+            var shader = Shader.Find(matte ? "Universal Render Pipeline/Simple Lit" : "Universal Render Pipeline/Lit");
             var m = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (m == null)
             {
-                m = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+                m = new Material(shader);
                 AssetDatabase.CreateAsset(m, path);
             }
+            else if (m.shader != shader) m.shader = shader;
             m.color = color;
             m.SetFloat("_Metallic", metallic);
-            m.SetFloat("_Smoothness", 0.15f);
+            m.SetFloat("_Smoothness", matte ? 0f : 0.15f);
+            if (matte)
+            {
+                // Simple Lit reads this as its specular source: 0 is "texture and colour" (on), 1 is "none".
+                // Its material validation sets the keywords from it, so 0 here would turn the sheen back on.
+                m.SetFloat("_SpecularHighlights", 1f);
+                m.DisableKeyword("_SPECULAR_COLOR");
+                m.DisableKeyword("_SPECGLOSSMAP");
+            }
             m.enableInstancing = true;
             EditorUtility.SetDirty(m);
             return m;
         }
 
         /// <summary>Our own placeholder materials get the baked textures; hand-assigned materials are left alone.</summary>
-        private static Material Textured(Material current, string name, Color tint, Texture2D albedo, Texture2D normal)
+        private static Material Textured(Material current, string name, Color tint, Texture2D albedo, Texture2D normal,
+            bool matte = true)
         {
             if (current != null && current.name != name) return current;
-            var m = Mat(name, tint);
+            var m = Mat(name, tint, matte: matte);
             m.SetTexture("_BaseMap", albedo);
             m.SetTexture("_BumpMap", normal);
             m.SetFloat("_BumpScale", 1f);

@@ -23,8 +23,10 @@ namespace ThePitt.World
         /// <item>3: no small alley runs alongside a bigger walkway or gang square with less than a lot between,
         /// or opens onto a terrace stairway.</item>
         /// <item>4: no piece of small alley the player can't walk into (sealed off, or only across a terrace wall).</item>
+        /// <item>5: alleys over a street, or into the pit or a square, are dropped rather than built on; fence gaps fit the player; clutter that
+        /// leaves an alley too tight to pass is cleared; properties are chosen last, from doors the player can reach.</item>
         /// </list>
-        public const int GeneratorVersion = 4;
+        public const int GeneratorVersion = 5;
 
         /// <summary>The oldest version the generator can still build. Saves from before it can't be loaded.</summary>
         public const int OldestGeneratorVersion = 2;

@@ -12,19 +12,21 @@ namespace ThePitt.World
     {
         [SerializeField] private DistrictAtmosphere atmosphere;
         [Tooltip("Brightness of the light from above.")]
-        [SerializeField, Range(0f, 2f)] private float keyIntensity = 1.1f;
+        [SerializeField, Range(0f, 2f)] private float keyIntensity = 0.8f;
         [Tooltip("Brightness of the light from below and behind, relative to the key.")]
-        [SerializeField, Range(0f, 1f)] private float fillRatio = 0.65f;
+        [SerializeField, Range(0f, 1f)] private float fillRatio = 1f;
         [Tooltip("How much of the district's colour the light takes on.")]
         [SerializeField, Range(0f, 1f)] private float districtTint = 0.75f;
         [Tooltip("Colour before district tinting.")]
         [SerializeField] private Color baseColor = new(0.85f, 0.8f, 0.75f);
-        [SerializeField] private Vector3 keyAngles = new(62f, 35f, 0f);
+        [Tooltip("Straight down by default: the light falls from the hole in the cavern ceiling.")]
+        [SerializeField] private Vector3 keyAngles = new(90f, 0f, 0f);
         [Tooltip("Shadows on the light from above. With it near-vertical, walls and overhangs darken the alleys and\n" +
                  "underpasses beneath them: the enclosed-is-darker the baked probes used to give.")]
         [SerializeField] private LightShadows keyShadows = LightShadows.Soft;
         [SerializeField, Range(0f, 1f)] private float keyShadowStrength = 0.65f;
-        [SerializeField] private Vector3 fillAngles = new(-35f, 215f, 0f);
+        [Tooltip("Nearly level, so it reaches the walls the straight-down key can't.")]
+        [SerializeField] private Vector3 fillAngles = new(-10f, 215f, 0f);
 
         private Light key, fill;
 

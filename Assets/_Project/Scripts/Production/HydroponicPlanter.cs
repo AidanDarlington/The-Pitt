@@ -254,9 +254,10 @@ namespace ThePitt.Production
                     return $"Plant · Water {water / tankCapacity:P0}";
 
                 case State.Growing:
-                    // The ring over the vat shows the crop, its progress and the tank; only problems are spelt out.
+                    // The ring over the vat shows the crop and its progress; the tank and any problems are spelt out.
                     string warning = water <= 0f ? " · DRY" : TooLit ? " · too much light" : lastSample < 0.5f ? " · poor light" : "";
-                    return (CanWater(interactor) ? "Add water" : $"{plant.DisplayName} growing") + warning;
+                    string tank = $" · Water {water / tankCapacity:P0}";
+                    return (CanWater(interactor) ? "Add water" : $"{plant.DisplayName} growing") + tank + warning;
 
                 default:
                     return $"Harvest {plant.DisplayName} ({Quality})";

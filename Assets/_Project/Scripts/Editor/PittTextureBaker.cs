@@ -14,7 +14,9 @@ namespace ThePitt.World.EditorTools
         private const int Size = 512;
         private const float MetresPerTile = 2f;
         // Bump when the look changes so existing textures are regenerated.
-        private const int Version = 3;
+        // 4: bright, contrasty albedo (Aneurism IV style): the texture carries colour and detail, the lights carry the mood.
+        private const int Version = 4;
+        private const int AsphaltVersion = 3;
 
         public static (Texture2D albedo, Texture2D normal) Brick(string folder) =>
             Bake(folder, "Brick", BrickHeight, BrickColor, normalStrength: 6f);
@@ -23,8 +25,9 @@ namespace ThePitt.World.EditorTools
             Bake(folder, "Concrete", ConcreteHeight, ConcreteColor, normalStrength: 3f);
 
         /// <summary>Cracked, oil-stained asphalt with gravel speckle; alpha carries a slight wet sheen.</summary>
+        /// <remarks>Kept at its version 3 look by choice, not rebuilt with the brighter version 4 surfaces.</remarks>
         public static (Texture2D albedo, Texture2D normal) Asphalt(string folder) =>
-            Bake(folder, "Asphalt", AsphaltHeight, AsphaltColor, normalStrength: 4f);
+            Bake(folder, "Asphalt", AsphaltHeight, AsphaltColor, normalStrength: 4f, version: AsphaltVersion);
 
         /// <summary>Polished white marble in metre slabs, grey veins wandering through it. No grime: it's kept clean.</summary>
         public static (Texture2D albedo, Texture2D normal) Marble(string folder) =>
@@ -34,10 +37,11 @@ namespace ThePitt.World.EditorTools
         public static Vector2 Tiling => Vector2.one / MetresPerTile;
 
         private static (Texture2D, Texture2D) Bake(string folder, string name,
-            System.Func<float, float, float> height, System.Func<float, float, float, Color> color, float normalStrength)
+            System.Func<float, float, float> height, System.Func<float, float, float, Color> color, float normalStrength,
+            int version = Version)
         {
-            string albedoPath = $"{folder}/Tex_{name}_v{Version}_Albedo.png";
-            string normalPath = $"{folder}/Tex_{name}_v{Version}_Normal.png";
+            string albedoPath = $"{folder}/Tex_{name}_v{version}_Albedo.png";
+            string normalPath = $"{folder}/Tex_{name}_v{version}_Normal.png";
             var existingAlbedo = AssetDatabase.LoadAssetAtPath<Texture2D>(albedoPath);
             var existingNormal = AssetDatabase.LoadAssetAtPath<Texture2D>(normalPath);
             if (existingAlbedo != null && existingNormal != null) return (existingAlbedo, existingNormal);
@@ -108,11 +112,17 @@ namespace ThePitt.World.EditorTools
         private static Color BrickColor(float u, float v, float h)
         {
             BrickCell(u, v, out int bx, out int by, out _, out _);
-            float tone = Hash(bx, by) * 0.35f + 0.65f;
-            // Muddier, less saturated brick so light colour, not the albedo, sets the mood.
-            var brick = new Color(0.4f, 0.23f, 0.17f) * tone;
-            var mortar = new Color(0.27f, 0.25f, 0.23f);
+            // Each brick its own fired colour: mostly red-brown, some burnt dark, some pale and sandy.
+            float pick = Hash(bx + 101, by * 7 + 3);
+            var brick = pick < 0.15f ? new Color(0.42f, 0.27f, 0.21f)
+                : pick > 0.88f ? new Color(0.68f, 0.56f, 0.45f)
+                : new Color(0.6f, 0.38f, 0.29f);
+            brick *= 0.8f + Hash(bx, by) * 0.35f;
+            // Mortar sits paler than the brick, shaded where it's recessed.
+            var mortar = new Color(0.6f, 0.57f, 0.52f) * Mathf.Lerp(0.65f, 1f, h);
             var c = Color.Lerp(mortar, brick, Mathf.Clamp01(h * 1.6f - 0.3f));
+            // A little surface mottle on the brick faces.
+            c *= 0.9f + Fbm(u, v, 32, 32, 2) * 0.2f;
             return ApplyGrime(c, u, v);
         }
 
@@ -132,8 +142,12 @@ namespace ThePitt.World.EditorTools
         private static Color ConcreteColor(float u, float v, float h)
         {
             float mottle = Fbm(u, v, 6, 6, 4);
-            var c = new Color(0.44f, 0.43f, 0.41f) * (0.8f + mottle * 0.35f);
-            c *= Mathf.Lerp(0.6f, 1f, h);
+            var c = new Color(0.64f, 0.62f, 0.58f) * (0.72f + mottle * 0.5f);
+            // Patches of old render and repairs, a shade warmer or cooler.
+            float patch = SmoothEdge(0.55f, 0.7f, Fbm(u + 0.21f, v + 0.6f, 3, 3, 4));
+            c = Color.Lerp(c, c * new Color(1.08f, 1f, 0.86f), patch * 0.6f);
+            // Seams and tie-holes read dark, never black.
+            c *= Mathf.Lerp(0.35f, 1f, h);
             return ApplyGrime(c, u, v);
         }
 
@@ -164,33 +178,31 @@ namespace ThePitt.World.EditorTools
         /// <summary>Dark stains, water streaks running down, soot near the bottom, and fine speckle.</summary>
         private static Color ApplyGrime(Color c, float u, float v)
         {
-            float stain = Mathf.SmoothStep(0.4f, 0.75f, Fbm(u, v, 3, 3, 5));
-            float streak = Mathf.SmoothStep(0.5f, 0.85f, Fbm(u + 0.37f, v, 18, 2, 3)) * (0.4f + 0.6f * (1f - v));
-            float soot = Mathf.SmoothStep(0.35f, 0f, v) * 0.5f;
-            float grime = Mathf.Clamp01(stain * 0.75f + streak * 0.6f + soot);
-            c = Color.Lerp(c, c * new Color(0.25f, 0.23f, 0.2f), grime);
+            float stain = SmoothEdge(0.35f, 0.65f, Fbm(u, v, 3, 3, 5));
+            float streak = SmoothEdge(0.4f, 0.7f, Fbm(u + 0.37f, v, 18, 2, 3)) * (0.4f + 0.6f * (1f - v));
+            float soot = SmoothEdge(0.35f, 0f, v) * 0.5f;
+            // Grime darkens and browns the surface but leaves it readable: no patch goes much below half brightness.
+            float grime = Mathf.Clamp01(stain * 0.6f + streak * 0.6f + soot) * 0.85f;
+            c = Color.Lerp(c, c * new Color(0.48f, 0.43f, 0.36f), grime);
             // High-frequency speckle gives the crunchy, gritty read.
             float speckle = Hash(Mathf.FloorToInt(u * Size), Mathf.FloorToInt(v * Size));
-            c *= 0.82f + speckle * 0.3f;
+            c *= 0.86f + speckle * 0.28f;
             c.a = 1f;
             return c;
         }
 
         // ---------------------------------------------------------------- asphalt
 
-        private static float Crack(float u, float v)
-        {
-            // Thin dark lines where a noise field crosses its midpoint.
-            float n = Fbm(u, v, 4, 4, 4);
-            return 1f - Mathf.SmoothStep(0f, 0.012f, Mathf.Abs(n - 0.5f));
-        }
-
         private static float AsphaltHeight(float u, float v)
         {
             float gravel = Hash(Mathf.FloorToInt(u * Size), Mathf.FloorToInt(v * Size)) * 0.25f;
-            return 0.7f + gravel - Crack(u, v) * 0.6f + Fbm(u, v, 8, 8, 3) * 0.15f;
+            return 0.7f + gravel - AsphaltCrack(u, v) * 0.6f + Fbm(u, v, 8, 8, 3) * 0.15f;
         }
 
+        /// <summary>
+        /// The version 3 asphalt, exactly as it was, Mathf.SmoothStep and all: that blends between its first two
+        /// arguments rather than thresholding, which is what gives this asphalt its dark, even look.
+        /// </summary>
         private static Color AsphaltColor(float u, float v, float h)
         {
             // Dusty, worn grey rather than fresh black asphalt, so the ground reads in dim light.
@@ -201,10 +213,27 @@ namespace ThePitt.World.EditorTools
             float oil = Mathf.SmoothStep(0.62f, 0.78f, Fbm(u, v + 0.3f, 3, 3, 4));
             c = Color.Lerp(c, new Color(0.1f, 0.09f, 0.08f), oil * 0.7f);
             c *= Mathf.Lerp(0.85f, 1.1f, Hash(Mathf.FloorToInt(u * Size), Mathf.FloorToInt(v * Size)));
-            c = Color.Lerp(c, Color.black, Crack(u, v) * 0.8f);
+            c = Color.Lerp(c, Color.black, AsphaltCrack(u, v) * 0.8f);
             // URP terrain reads alpha as smoothness: oily patches shine a little, cracks are dull.
-            c.a = Mathf.Clamp01(0.18f + oil * 0.35f - Crack(u, v) * 0.18f);
+            c.a = Mathf.Clamp01(0.18f + oil * 0.35f - AsphaltCrack(u, v) * 0.18f);
             return c;
+        }
+
+        /// <summary>The version 3 crack mask the asphalt was baked with (see <see cref="AsphaltColor"/>).</summary>
+        private static float AsphaltCrack(float u, float v)
+        {
+            float n = Fbm(u, v, 4, 4, 4);
+            return 1f - Mathf.SmoothStep(0f, 0.012f, Mathf.Abs(n - 0.5f));
+        }
+
+        /// <summary>
+        /// 0 below edge0, 1 above edge1, smooth between (the shader smoothstep; edge0 may be above edge1 to invert).
+        /// Not Mathf.SmoothStep, which blends between its first two arguments instead.
+        /// </summary>
+        private static float SmoothEdge(float edge0, float edge1, float x)
+        {
+            float t = Mathf.Clamp01((x - edge0) / (edge1 - edge0));
+            return t * t * (3f - 2f * t);
         }
 
         private static float Hash(int x, int y)

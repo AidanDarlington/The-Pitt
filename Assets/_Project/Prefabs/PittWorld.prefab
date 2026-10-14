@@ -193,6 +193,7 @@ MonoBehaviour:
   dirtLayer: {fileID: 8574412962073106934, guid: 91e43e56cf1fa0972a6070a08a8c3f26, type: 2}
   terminalScreen: {fileID: 2100000, guid: f10110c43dc761e97811a7c844b889a6, type: 2}
   materialLibrary:
+  - {fileID: 2100000, guid: e449a99c23cb37bb1a09b4eec2c39729, type: 2}
   - {fileID: 2100000, guid: b4cc5f2d474c0376b91379d2bfa01634, type: 2}
   - {fileID: 2100000, guid: c2474e28fb3503409ad34fc50079d72a, type: 2}
   - {fileID: 2100000, guid: 37cdb8a1f41bbdc38b6c60829c960961, type: 2}
@@ -477,6 +478,8 @@ MonoBehaviour:
       height: 77.16856
     height: -6
   startPoint: {x: 3.1799452, y: -5.5222087}
+  startPosition: {x: 0, y: 0, z: 0}
+  startYaw: 0
   districts:
   - name: Crimson Row
     center: {x: 0, y: 0}
