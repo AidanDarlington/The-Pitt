@@ -863,7 +863,7 @@ MonoBehaviour:
   blendDistance: 25
   transitionSpeed: 1.5
   ambientBoost: 2.5
-  skyBias: 3
+  skyBias: 1.5
   groundBias: 0.3
   fogDensity: 0.0055
   outpostAmbient: {r: 0.07, g: 0.08, b: 0.1, a: 1}
@@ -873,7 +873,7 @@ MonoBehaviour:
   shadowTint: 0.3
   midtoneTint: 0.15
   highlightTint: {r: 1, g: 0.94, b: 0.8, a: 1}
-  gradeExposure: 0.3
+  gradeExposure: -0.3
 --- !u!4 &387344527
 Transform:
   m_ObjectHideFlags: 0
@@ -902,14 +902,14 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ThePitt.World.MurkLight
   atmosphere: {fileID: 387344526}
-  keyIntensity: 1.1
-  fillRatio: 0.65
+  keyIntensity: 0.8
+  fillRatio: 1
   districtTint: 0.75
   baseColor: {r: 0.85, g: 0.8, b: 0.75, a: 1}
-  keyAngles: {x: 62, y: 35, z: 0}
+  keyAngles: {x: 90, y: 0, z: 0}
   keyShadows: 2
   keyShadowStrength: 0.65
-  fillAngles: {x: -35, y: 215, z: 0}
+  fillAngles: {x: -10, y: 215, z: 0}
 --- !u!1 &417051743
 GameObject:
   m_ObjectHideFlags: 0

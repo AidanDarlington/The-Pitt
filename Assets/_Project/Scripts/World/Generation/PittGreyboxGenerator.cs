@@ -40,6 +40,8 @@ namespace ThePitt.World.Generation
             public float ground;
             public float top;
             public bool hollow;
+            /// <summary>Built over a stretch of alley (a dead-end plug or a filled-in piece) rather than a lot of its own.</summary>
+            public bool filler;
             public bool property;
             /// <summary>The business run from this lot's property, if it's one.</summary>
             public Production.BusinessKind? business;
@@ -93,7 +95,6 @@ namespace ThePitt.World.Generation
         private static List<Rect> stairZones = new();
         private static RectIndex streetIndex, alleyIndex, walkIndex;
         private static Dictionary<string, Material> glowCache;
-        private static Dictionary<Vector3Int, Mesh> cubeCache;
 
         public static void Clear(PittGreybox greybox)
         {
@@ -174,6 +175,7 @@ namespace ThePitt.World.Generation
             // Built switched off: every component wakes up once the whole city is standing and set up, as it
             // would loading a saved one (Property reads whether it starts owned in Awake, for one).
             root.gameObject.SetActive(false);
+            LastRoot = root;
 
             Layout();
             Mark("layout");
@@ -182,6 +184,8 @@ namespace ThePitt.World.Generation
 
             foreach (var stage in stages)
             {
+                // From version 5 the properties come last of all (see PlaceProperties).
+                if (stage.name == "properties" && Since(5)) continue;
                 stage.build(root);
                 Mark(stage.name);
                 done += stage.cost;
@@ -196,6 +200,17 @@ namespace ThePitt.World.Generation
             Mark("wake");
             done += wakeCost;
             yield return done / total;
+
+            if (Since(5))
+            {
+                // Clutter clear of the alleys first, then the NPC NavMesh, which the property doors are checked against.
+                ClearAlleys(root);
+                Mark("alley clearance");
+                BuildNavMesh();
+                Mark("navmesh");
+                PlaceProperties(root);
+                Mark("properties");
+            }
 
             // Everything that never moves is batched together; lights, pickups, cables and flickering fittings stay apart.
             if (Application.isPlaying)
@@ -213,8 +228,11 @@ namespace ThePitt.World.Generation
             done += batch;
             yield return done / total;
 
-            BuildNavMesh();
-            Mark("navmesh");
+            if (!Since(5))
+            {
+                BuildNavMesh();
+                Mark("navmesh");
+            }
             LastBuilt = root;
             Debug.Log($"PittGreybox built seed {g.seed}: {plans.Count} buildings, {segments.Count} walkway segments, " +
                       $"{alleys.Count} alleys, {catwalkZones.Count} catwalks, {g.districts.Count} districts. {timings}");
@@ -227,7 +245,6 @@ namespace ThePitt.World.Generation
             g.seed = seed;
             g.buildVersion = version;
             glowCache = new Dictionary<string, Material>();
-            cubeCache = new Dictionary<Vector3Int, Mesh>();
             planIndex = null;
             rng = new System.Random(seed);
         }
@@ -252,7 +269,8 @@ namespace ThePitt.World.Generation
             PlanLots();
             RecordAlleySpots();
             ChooseHiddenSpots();
-            ChooseProperties();
+            // From version 5 they're chosen once the city stands, from doors the player can get to (PlaceProperties).
+            if (!Since(5)) ChooseProperties();
         }
 
         // ---------------------------------------------------------------- layout
@@ -999,6 +1017,9 @@ namespace ThePitt.World.Generation
                 Split(cell, lots);
             }
 
+            // Every lot from here on is built over a stretch of alley.
+            int gridLots = lots.Count;
+
             // Small alleys mostly dead-end: block a through-alley part way along with an extra building.
             var kept = new List<Rect>();
             foreach (var a in alleys)
@@ -1034,6 +1055,11 @@ namespace ThePitt.World.Generation
                 FillAlleysAlongsideWalkways(lots);
                 FillAlleysBesideStairs(lots);
             }
+            if (Since(5))
+            {
+                DropAlleysIntoOpenGround();
+                FillAlleysAlongTerraceEdges(lots);
+            }
             var pits = FillAlleyPits();
             if (Since(4)) pits.AddRange(FillUnreachableAlleys());
             foreach (var a in alleys)
@@ -1042,20 +1068,24 @@ namespace ThePitt.World.Generation
                 walkIndex.Add(a);
             }
 
-            foreach (var lot in lots)
+            for (int i = 0; i < lots.Count; i++)
             {
+                var lot = lots[i];
                 if (lot.width < 1.2f || lot.height < 1.2f || TouchesOpen(lot)) continue;
                 GroundRange(lot, out float min, out float max);
                 float height = Chance(g.towerChance) ? R(g.towerHeight) : R(g.buildingHeight);
-                plans.Add(new Plan { footprint = lot, groundMin = min, ground = max, top = max + height });
+                plans.Add(new Plan { footprint = lot, groundMin = min, ground = max, top = max + height, filler = i >= gridLots });
             }
             // Filled-in stretches of alley, however small: a building's worth of solid where the hole was.
             foreach (var pit in pits)
             {
                 GroundRange(pit, out float min, out float max);
-                plans.Add(new Plan { footprint = pit, groundMin = min, ground = max, top = max + R(g.buildingHeight) });
+                plans.Add(new Plan { footprint = pit, groundMin = min, ground = max, top = max + R(g.buildingHeight), filler = true });
             }
         }
+
+        /// <summary>How far a face is set back from (or proud of) another it would otherwise sit flush with and fight.</summary>
+        private const float FlushOffset = 0.02f;
 
         /// <summary>Narrowest gap the player can stand in.</summary>
         private const float PlayerGap = 0.9f;
@@ -1176,8 +1206,9 @@ namespace ThePitt.World.Generation
                 bool opensOnto = false;
                 // Touching a stairway's side counts: that's where its mouth would be.
                 foreach (var z in reach) opensOnto |= Grow(z, 0.4f).Overlaps(a);
-                if (opensOnto) lots.Add(a);
-                else kept.Add(a);
+                if (!opensOnto) kept.Add(a);
+                // Over the street itself (where the stairs go): dropped, never built on.
+                else if (!(Since(5) && OverStreet(a))) lots.Add(a);
             }
             alleys = kept;
         }
@@ -1213,10 +1244,80 @@ namespace ThePitt.World.Generation
                         break;
                     }
                 }
-                if (alongside) lots.Add(a);
-                else kept.Add(a);
+                if (!alongside) kept.Add(a);
+                // An alley lying over the street is just more street: building on it would block the street.
+                else if (!(Since(5) && OverStreet(a))) lots.Add(a);
             }
             alleys = kept;
+        }
+
+        /// <summary>
+        /// Small alleys running into open ground (the scrap pit and its rim, a gang square) are dropped: the lots
+        /// there are left open already, and an alley sloping down into the pit bowl can't be walked. What's left of
+        /// the ground is simply open. Uses no randomness.
+        /// </summary>
+        private static void DropAlleysIntoOpenGround()
+        {
+            alleys.RemoveAll(a =>
+            {
+                var inner = Grow(a, -0.3f);
+                bool alongX = a.width > a.height;
+                float length = alongX ? inner.width : inner.height;
+                for (float d = 0f; d <= length + 0.01f; d += 0.5f)
+                {
+                    var p = alongX ? new Vector2(inner.xMin + d, inner.center.y) : new Vector2(inner.center.x, inner.yMin + d);
+                    if (g.IsOpen(p)) return true;
+                }
+                return false;
+            });
+        }
+
+        /// <summary>
+        /// A small alley with a terrace edge running down its length gets the retaining wall built along it, which
+        /// leaves strips either side too narrow to walk: it's built over instead (unless it's over a street).
+        /// Alleys crossing an edge are dealt with by <see cref="FillAlleyPits"/>. Uses no randomness.
+        /// </summary>
+        private static void FillAlleysAlongTerraceEdges(List<Rect> lots)
+        {
+            const float wallHalf = 0.5f;
+            var kept = new List<Rect>();
+            foreach (var a in alleys)
+            {
+                bool alongX = a.width > a.height;
+                float length = alongX ? a.width : a.height;
+                bool walled = false;
+                foreach (var t in g.terraces)
+                {
+                    var r = t.rect;
+                    // The terrace's edges running the same way as the alley.
+                    foreach (float line in alongX ? new[] { r.yMin, r.yMax } : new[] { r.xMin, r.xMax })
+                    {
+                        float side0 = alongX ? a.yMin : a.xMin, side1 = alongX ? a.yMax : a.xMax;
+                        if (line < side0 - wallHalf || line > side1 + wallHalf) continue;
+                        float overlap = alongX ? Mathf.Min(a.xMax, r.xMax) - Mathf.Max(a.xMin, r.xMin) : Mathf.Min(a.yMax, r.yMax) - Mathf.Max(a.yMin, r.yMin);
+                        if (overlap < length * 0.25f) continue;
+                        // Only where the ground changes height across it: that's where a wall goes.
+                        var c = alongX ? new Vector2(Mathf.Clamp(a.center.x, r.xMin, r.xMax), line) : new Vector2(line, Mathf.Clamp(a.center.y, r.yMin, r.yMax));
+                        var across = alongX ? Vector2.up : Vector2.right;
+                        if (Mathf.Abs(g.HeightAt(c + across * 1.2f) - g.HeightAt(c - across * 1.2f)) < 0.3f) continue;
+                        walled = true;
+                        break;
+                    }
+                    if (walled) break;
+                }
+                if (!walled) kept.Add(a);
+                else if (!OverStreet(a)) lots.Add(a);
+            }
+            alleys = kept;
+        }
+
+        /// <summary>Whether a rect lies partly over a street (not just touching its side).</summary>
+        private static bool OverStreet(Rect r)
+        {
+            var inner = Grow(r, -0.05f);
+            foreach (var s in segments)
+                if (inner.Overlaps(s.rect)) return true;
+            return false;
         }
 
         /// <summary>
@@ -1627,13 +1728,63 @@ namespace ThePitt.World.Generation
         {
             var parent = Group(root, "Buildings");
             var hidden = Group(root, "HiddenSpots");
-            foreach (var p in plans)
+            var mats = new Material[plans.Count];
+            for (int i = 0; i < plans.Count; i++)
             {
                 float roll = R(0f, 1f);
-                var mat = roll < 0.4f ? g.brick : roll < 0.8f ? g.concrete : g.concreteDark;
-                if (p.hollow) BuildHollow(parent, hidden, p, mat);
+                mats[i] = roll < 0.4f ? g.brick : roll < 0.8f ? g.concrete : g.concreteDark;
+            }
+            // From version 5 a filled-in alley takes the walls of the building it sits against, so it reads as
+            // part of that building rather than a patch of different material wedged between two.
+            if (Since(5)) MatchFillerMaterials(mats);
+            for (int i = 0; i < plans.Count; i++)
+            {
+                var p = plans[i];
+                if (p.hollow) BuildHollow(parent, hidden, p, mats[i]);
                 // With sump tunnels, bottoms stop just under the street so the tunnels can run beneath.
-                else Box("Building", parent, p.footprint, p.groundMin - BuildingSink, p.top, mat);
+                else Box("Building", parent, p.footprint, p.groundMin - BuildingSink, p.top, mats[i]);
+            }
+        }
+
+        /// <summary>Gives each filler plan the material of the non-filler building it shares the longest wall with.</summary>
+        private static void MatchFillerMaterials(Material[] mats)
+        {
+            var index = new Dictionary<Vector2Int, List<int>>();
+            const float cell = 10f;
+            for (int i = 0; i < plans.Count; i++)
+            {
+                if (plans[i].filler) continue;
+                var r = plans[i].footprint;
+                for (int x = Mathf.FloorToInt(r.xMin / cell); x <= Mathf.FloorToInt(r.xMax / cell); x++)
+                for (int z = Mathf.FloorToInt(r.yMin / cell); z <= Mathf.FloorToInt(r.yMax / cell); z++)
+                {
+                    var key = new Vector2Int(x, z);
+                    if (!index.TryGetValue(key, out var list)) index[key] = list = new List<int>();
+                    list.Add(i);
+                }
+            }
+            for (int i = 0; i < plans.Count; i++)
+            {
+                if (!plans[i].filler) continue;
+                var f = Grow(plans[i].footprint, 0.1f);
+                float best = 0f;
+                for (int x = Mathf.FloorToInt(f.xMin / cell); x <= Mathf.FloorToInt(f.xMax / cell); x++)
+                for (int z = Mathf.FloorToInt(f.yMin / cell); z <= Mathf.FloorToInt(f.yMax / cell); z++)
+                {
+                    if (!index.TryGetValue(new Vector2Int(x, z), out var list)) continue;
+                    foreach (int j in list)
+                    {
+                        var o = plans[j].footprint;
+                        if (!f.Overlaps(o)) continue;
+                        // Length of the shared wall: the overlap along the longer side of the touching strip.
+                        float w = Mathf.Min(f.xMax, o.xMax) - Mathf.Max(f.xMin, o.xMin);
+                        float h = Mathf.Min(f.yMax, o.yMax) - Mathf.Max(f.yMin, o.yMin);
+                        float shared = Mathf.Max(w, h);
+                        if (shared <= best) continue;
+                        best = shared;
+                        mats[i] = mats[j];
+                    }
+                }
             }
         }
 
@@ -1654,7 +1805,7 @@ namespace ThePitt.World.Generation
                     var fp = p.footprint;
                     if (fp.width < g.propertyMinLot || fp.height < g.propertyMinLot || g.DistrictIndexAt(fp.center) != d) continue;
                     if (Vector2.Distance(fp.center, g.pitCenter) < g.pitRadius + 10f) continue;
-                    if (TryStreetDoor(p, false) && InPropertyArea(p)) candidates.Add(p);
+                    if (TryStreetDoor(p, false) && InPropertyArea(p) && Accessible(p)) candidates.Add(p);
                 }
                 if (candidates.Count == 0)
                 {
@@ -1684,7 +1835,7 @@ namespace ThePitt.World.Generation
                     int d = g.DistrictIndexAt(fp.center);
                     if (fp.width < g.propertyMinLot || fp.height < g.propertyMinLot || d == 0 || (district >= 0 && d != district)) continue;
                     if (Vector2.Distance(fp.center, g.pitCenter) < g.pitRadius + 10f) continue;
-                    if (TryStreetDoor(p, false) && InPropertyArea(p)) candidates.Add(p);
+                    if (TryStreetDoor(p, false) && InPropertyArea(p) && Accessible(p)) candidates.Add(p);
                 }
                 if (candidates.Count == 0)
                 {
@@ -1766,7 +1917,7 @@ namespace ThePitt.World.Generation
             foreach (var p in plans)
             {
                 if (p.hollow || p.property || g.DistrictIndexAt(p.footprint.center) != 0) continue;
-                if (!TryStreetDoor(p, true, 5f) || !InPropertyArea(p)) continue;
+                if (!TryStreetDoor(p, true, 5f) || !InPropertyArea(p) || !Accessible(p)) continue;
                 float distance = Vector2.Distance(p.doorPoint, centre);
                 if (distance < bestDistance)
                 {
@@ -2231,6 +2382,8 @@ namespace ThePitt.World.Generation
             stairZones = new List<Rect>();
             if (g.terraces.Count == 0) return;
             var parent = Group(root, "Heights");
+            // The flights and landings are surfaced like the street they climb from.
+            var stairSurface = Mat("World_Asphalt", new Color(0.27f, 0.26f, 0.25f));
             float h = g.HalfSize;
             foreach (var pl in g.terraces)
             {
@@ -2299,13 +2452,13 @@ namespace ThePitt.World.Generation
                         {
                             int lower = steps / 2;
                             float midY = lowY + rise * lower / steps;
-                            BuildStairs(terrace, Slice(stair, up, 0f, lower * tread), up, lowY, midY, g.concrete);
-                            Box("Landing", terrace, Slice(stair, up, lower * tread, lower * tread + landing), lowY - 0.05f, midY, g.concrete);
-                            BuildStairs(terrace, Slice(stair, up, lower * tread + landing, run), up, midY, highY, g.concrete);
+                            BuildStairs(terrace, Slice(stair, up, 0f, lower * tread), up, lowY, midY, stairSurface);
+                            Box("Landing", terrace, Slice(stair, up, lower * tread, lower * tread + landing), lowY - 0.05f, midY, stairSurface);
+                            BuildStairs(terrace, Slice(stair, up, lower * tread + landing, run), up, midY, highY, stairSurface);
                         }
-                        else BuildStairs(terrace, stair, up, lowY, highY, g.concrete);
+                        else BuildStairs(terrace, stair, up, lowY, highY, stairSurface);
                         // Top landing reaching over the edge, where the ground dips between the levels.
-                        Box("TopLanding", terrace, Slice(stair, up, run - 0.05f, run + 0.9f), lowY - 0.05f, highY, g.concrete);
+                        Box("TopLanding", terrace, Slice(stair, up, run - 0.05f, run + 0.9f), lowY - 0.05f, highY, stairSurface);
                         stairZones.Add(Slice(stair, up, 0f, run + 0.9f));
                         // No lamp here (a post at the stair foot stood out in the open street); its draw is kept
                         // so the rest of the city comes out the same.
@@ -2324,6 +2477,9 @@ namespace ThePitt.World.Generation
                             if (!float.IsNaN(runLow) && end - runStart > 0.05f)
                             {
                                 var wr = e.alongX ? Rect.MinMaxRect(runStart, e.line - 0.5f, end, e.line + 0.5f) : Rect.MinMaxRect(e.line - 0.5f, runStart, e.line + 0.5f, end);
+                                // From version 5 tucked just inside the buildings it meets: flush, their faces fought
+                                // (brick and concrete flickering on one plane beside the stairs).
+                                if (Since(5)) wr = Grow(wr, -FlushOffset);
                                 Box("RetainingWall", terrace, wr, runLow - 0.4f, hIn + 1f, g.concreteDark);
                             }
                         }
@@ -2889,6 +3045,217 @@ namespace ThePitt.World.Generation
 
         private static Rect Square(Vector2 c, float half) => Rect.MinMaxRect(c.x - half, c.y - half, c.x + half, c.y + half);
 
+        // ---------------------------------------------------------------- clearance (version 5)
+
+        /// <summary>The gap alley fences leave, from version 5: the player (0.35 m radius and skin) fits through.</summary>
+        private const float FenceGap = 1f;
+
+        /// <summary>The player's capsule for clearance checks: radius with skin, height, and the step they can climb.</summary>
+        private const float PlayerRadius = 0.44f, PlayerHeight = 2f, PlayerStep = 0.3f;
+
+        /// <summary>Groups whose pieces are dressing, and can go where they'd block the way. Buildings, walls and stairs never are.</summary>
+        private static readonly HashSet<string> ClutterGroups = new()
+            { "Fences", "Shacks", "BuildingDetails", "Gantries", "Signage", "StreetProps", "Overhead", "Trash" };
+
+        private static readonly Collider[] overlapBuffer = new Collider[64];
+
+        /// <summary>
+        /// Walks every small alley in player-sized steps: wherever the player's capsule can't fit across the alley,
+        /// the dressing in the way (fences, shacks, pipes and boxes on walls, signs, gantry legs) is taken out. Runs
+        /// with the city switched on, before batching and the NavMesh. Uses no randomness.
+        /// </summary>
+        private static void ClearAlleys(Transform root)
+        {
+            Physics.SyncTransforms();
+            // Stuck only counts away from an alley's ends, where a dead end's closing wall is meant to be.
+            int sections = 0, cleared = 0, stuck = 0;
+            foreach (var a in alleys)
+            {
+                bool alongX = a.width > a.height;
+                float length = alongX ? a.width : a.height, width = alongX ? a.height : a.width;
+                float start = alongX ? a.xMin : a.yMin, mid = alongX ? a.center.y : a.center.x;
+                for (float d = 0.2f; d <= length - 0.2f; d += 0.25f)
+                {
+                    sections++;
+                    if (Passable(root, alongX, start + d, mid, width)) continue;
+                    var at = alongX ? new Vector2(start + d, mid) : new Vector2(mid, start + d);
+                    float y = g.HeightAt(at);
+                    var half = alongX ? new Vector3(0.3f, (PlayerHeight - PlayerStep) / 2f, width / 2f) : new Vector3(width / 2f, (PlayerHeight - PlayerStep) / 2f, 0.3f);
+                    int n = Physics.OverlapBoxNonAlloc(new Vector3(at.x, y + PlayerStep + half.y, at.y), half, overlapBuffer, Quaternion.identity, ~0, QueryTriggerInteraction.Ignore);
+                    for (int i = 0; i < n; i++)
+                    {
+                        var c = overlapBuffer[i];
+                        if (c == null || !IsClutter(c.transform, root)) continue;
+                        RemoveClutter(c.transform, root);
+                        cleared++;
+                    }
+                    if (d > 1f && d < length - 1f && !Passable(root, alongX, start + d, mid, width)) stuck++;
+                }
+            }
+            Debug.Log($"PittGreybox: alley clearance checked {sections} sections, cleared {cleared} pieces of clutter, {stuck} still too tight.");
+        }
+
+        /// <summary>Whether the player's capsule fits somewhere across an alley at this point along it.</summary>
+        private static bool Passable(Transform root, bool alongX, float along, float mid, float width)
+        {
+            float reach = width / 2f - PlayerRadius;
+            if (reach < 0f) return false;
+            for (float off = -reach; off <= reach + 0.001f; off += 0.05f)
+            {
+                var p = alongX ? new Vector2(along, mid + off) : new Vector2(mid + off, along);
+                float y = g.HeightAt(p);
+                var bottom = new Vector3(p.x, y + PlayerStep + PlayerRadius, p.y);
+                var top = new Vector3(p.x, y + PlayerHeight - PlayerRadius, p.y);
+                int n = Physics.OverlapCapsuleNonAlloc(bottom, top, PlayerRadius, overlapBuffer, ~0, QueryTriggerInteraction.Ignore);
+                bool blocked = false;
+                for (int i = 0; i < n && !blocked; i++)
+                    blocked = overlapBuffer[i] != null && overlapBuffer[i].transform.IsChildOf(root);
+                if (!blocked) return true;
+            }
+            return false;
+        }
+
+        /// <summary>The group a piece of the city sits in, directly under the root.</summary>
+        private static Transform GroupOf(Transform t, Transform root)
+        {
+            while (t != null && t.parent != root) t = t.parent;
+            return t;
+        }
+
+        private static bool IsClutter(Transform t, Transform root)
+        {
+            var group = GroupOf(t, root);
+            return group != null && ClutterGroups.Contains(group.name);
+        }
+
+        /// <summary>Takes out a piece of dressing: the whole object directly under its group (a fence panel, a shack, a sign).</summary>
+        private static void RemoveClutter(Transform t, Transform root)
+        {
+            var group = GroupOf(t, root);
+            while (t.parent != null && t.parent != group) t = t.parent;
+            t.gameObject.SetActive(false);
+            if (Application.isPlaying) Object.Destroy(t.gameObject);
+            else Object.DestroyImmediate(t.gameObject);
+        }
+
+        // ---------------------------------------------------------------- properties (version 5)
+
+        /// <summary>Where the player can get to from: on the NavMesh, on the thoroughfare nearest the centre of the central district.</summary>
+        private static Vector3? navOrigin;
+
+        /// <summary>
+        /// The properties, last of all: the player's home, one for sale per district and the businesses, each
+        /// only at a door the player can reach (see <see cref="Accessible"/>), with any dressing in front of the
+        /// door cleared away. Built switched off, then woken, as the rest of the city was.
+        /// </summary>
+        private static void PlaceProperties(Transform root)
+        {
+            navOrigin = FindNavOrigin();
+            if (navOrigin == null) Debug.LogWarning("PittGreybox: nowhere on the NavMesh to check property doors from; they won't be checked.");
+
+            ChooseProperties();
+            var holder = new GameObject("PropertyBuild").transform;
+            holder.SetParent(root, false);
+            holder.gameObject.SetActive(false);
+            BuildProperties(holder);
+            // The home is chosen in there: clear in front of every door now they're all known.
+            foreach (var p in plans)
+                if (p.property) ClearDoor(p, root);
+            var built = holder.Find("Properties");
+            if (built != null) built.SetParent(root, true);
+            Object.DestroyImmediate(holder.gameObject);
+        }
+
+        /// <summary>
+        /// The thoroughfare nearest the middle of the central district whose NavMesh joins up with most of the others.
+        /// The very nearest can sit in a sunken sump square cut off from the streets around it, and every door
+        /// checked from there would fail.
+        /// </summary>
+        private static Vector3? FindNavOrigin()
+        {
+            var centre = g.districts.Count > 0 ? g.districts[0].center : Vector2.zero;
+            var points = new List<(Vector3 point, float distance)>();
+            foreach (var s in segments)
+            {
+                if (!s.thoroughfare) continue;
+                var c = s.rect.center;
+                if (!UnityEngine.AI.NavMesh.SamplePosition(new Vector3(c.x, g.HeightAt(c), c.y), out var hit, 2f, UnityEngine.AI.NavMesh.AllAreas)) continue;
+                points.Add((hit.position, Vector2.Distance(c, centre)));
+            }
+            if (points.Count == 0) return null;
+
+            // Thoroughfares spread across the city to test against.
+            var targets = new List<Vector3>();
+            int stride = Mathf.Max(1, points.Count / 24);
+            for (int i = 0; i < points.Count; i += stride) targets.Add(points[i].point);
+
+            points.Sort((a, b) => a.distance.CompareTo(b.distance));
+            var path = new UnityEngine.AI.NavMeshPath();
+            Vector3? best = null;
+            int bestReached = -1;
+            for (int i = 0; i < Mathf.Min(10, points.Count); i++)
+            {
+                int reached = 0;
+                foreach (var t in targets)
+                    if (UnityEngine.AI.NavMesh.CalculatePath(points[i].point, t, UnityEngine.AI.NavMesh.AllAreas, path) &&
+                        path.status == UnityEngine.AI.NavMeshPathStatus.PathComplete) reached++;
+                if (reached * 2 > targets.Count) return points[i].point;
+                if (reached > bestReached)
+                {
+                    bestReached = reached;
+                    best = points[i].point;
+                }
+            }
+            return best;
+        }
+
+        /// <summary>The space just outside a door, a player's width across and a step and a half out.</summary>
+        private static void DoorFront(Plan p, out Vector3 centre, out Vector3 half)
+        {
+            var c = p.doorPoint + p.doorNormal * 0.8f;
+            half = p.doorNormal.x != 0f ? new Vector3(0.7f, 0.9f, 0.65f) : new Vector3(0.65f, 0.9f, 0.7f);
+            centre = new Vector3(c.x, p.doorGround + PlayerStep + 0.9f, c.y);
+        }
+
+        /// <summary>
+        /// From version 5, whether the player can use a door: nothing but dressing just outside it, and a path on
+        /// the NavMesh from the middle of the city to the street in front.
+        /// </summary>
+        private static bool Accessible(Plan p)
+        {
+            if (!Since(5)) return true;
+            var root = LastRoot;
+            if (root == null) return true;
+            DoorFront(p, out var centre, out var half);
+            int n = Physics.OverlapBoxNonAlloc(centre, half, overlapBuffer, Quaternion.identity, ~0, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < n; i++)
+            {
+                var c = overlapBuffer[i];
+                if (c != null && c.transform.IsChildOf(root) && !IsClutter(c.transform, root)) return false;
+            }
+            if (navOrigin == null) return true;
+            var front = p.doorPoint + p.doorNormal * 1.5f;
+            if (!UnityEngine.AI.NavMesh.SamplePosition(new Vector3(front.x, p.doorGround, front.y), out var hit, 1.2f, UnityEngine.AI.NavMesh.AllAreas)) return false;
+            var path = new UnityEngine.AI.NavMeshPath();
+            return UnityEngine.AI.NavMesh.CalculatePath(navOrigin.Value, hit.position, UnityEngine.AI.NavMesh.AllAreas, path) &&
+                   path.status == UnityEngine.AI.NavMeshPathStatus.PathComplete;
+        }
+
+        /// <summary>Takes any dressing out of the space in front of a property door.</summary>
+        private static void ClearDoor(Plan p, Transform root)
+        {
+            DoorFront(p, out var centre, out var half);
+            int n = Physics.OverlapBoxNonAlloc(centre, half, overlapBuffer, Quaternion.identity, ~0, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < n; i++)
+            {
+                var c = overlapBuffer[i];
+                if (c != null && c.transform.IsChildOf(root) && IsClutter(c.transform, root)) RemoveClutter(c.transform, root);
+            }
+        }
+
+        /// <summary>The root of the city being built (set while <see cref="BuildSteps"/> runs).</summary>
+        private static Transform LastRoot;
+
         // ---------------------------------------------------------------- navigation
 
         /// <summary>
@@ -2994,7 +3361,11 @@ namespace ThePitt.World.Generation
                 }
 
                 if (height > 14f && Chance(g.cantileverChance))
-                    Box("Cantilever", details, Grow(fp, R(0.8f, 1.6f)), b.top - R(4f, 7f), b.top, g.concrete);
+                {
+                    // From version 5 it caps the roof a touch above it: flush, the two tops fought.
+                    var overhang = Grow(fp, R(0.8f, 1.6f));
+                    Box("Cantilever", details, overhang, b.top - R(4f, 7f), b.top + (Since(5) ? FlushOffset : 0f), g.concrete);
+                }
 
                 if (height > 8f)
                 {
@@ -3093,7 +3464,8 @@ namespace ThePitt.World.Generation
             {
                 var strut = LocalBox("Strut", shack, new Vector3(i * (width / 2f - 0.3f), -0.9f, -depth / 2f + 0.55f),
                     new Vector3(0.15f, 2.2f, 0.15f), g.wood, collider: false);
-                strut.transform.localRotation = Quaternion.Euler(-40f, 0f, 0f);
+                // Foot against the wall, leaning out to hold the platform's front.
+                strut.transform.localRotation = Quaternion.Euler(40f, 0f, 0f);
             }
             if (Chance(0.5f))
             {
@@ -3398,14 +3770,16 @@ namespace ThePitt.World.Generation
                 if (!Chance(g.alleyFenceChance)) continue;
                 bool alongX = a.width > a.height;
                 float gap = alongX ? a.height : a.width;
-                if (gap - 0.85f < 0.3f) continue;
+                // The gap left to squeeze through: from version 5, wide enough for the player.
+                float squeeze = Since(5) ? FenceGap : 0.85f;
+                if (gap - squeeze < 0.3f) continue;
                 foreach (float end in new[] { -1f, 1f })
                 {
                     var tip = alongX ? new Vector2(end < 0 ? a.xMin : a.xMax, a.center.y) : new Vector2(a.center.x, end < 0 ? a.yMin : a.yMax);
                     var probe = tip + (alongX ? new Vector2(end * 0.5f, 0f) : new Vector2(0f, end * 0.5f));
                     if (!streetIndex.Contains(probe)) continue;
                     var inset = tip - (alongX ? new Vector2(end * 0.6f, 0f) : new Vector2(0f, end * 0.6f));
-                    float fenceLength = gap - 0.85f;
+                    float fenceLength = gap - squeeze;
                     Vector2 p0, p1;
                     if (alongX)
                     {
@@ -3918,56 +4292,57 @@ namespace ThePitt.World.Generation
             go.transform.position = new Vector3(xz.center.x, (bottom + top) / 2f, xz.center.y);
             var size = new Vector3(xz.width, top - bottom, xz.height);
             go.transform.localScale = size;
-            go.GetComponent<MeshFilter>().sharedMesh = MetreCube(size);
+            go.GetComponent<MeshFilter>().sharedMesh = WorldCube(go.transform.position, size);
             go.GetComponent<Renderer>().sharedMaterial = m;
             return go;
         }
 
         /// <summary>
-        /// A unit cube whose UVs are pre-scaled to the box's real size, so textures keep the same
-        /// physical scale on every building. Cached in 25 cm steps.
+        /// A unit cube (scaled up by its transform) whose UVs are world position in metres: the texture lies on the
+        /// city, not on each box, so it runs on unbroken across neighbouring boxes, and where two faces of the same
+        /// material overlap they show the same texels instead of fighting. Faces run U along the wall and V up it
+        /// with grime streaks hanging downward. One per box; static batching merges them anyway.
         /// </summary>
-        private static Mesh MetreCube(Vector3 size)
+        private static Mesh WorldCube(Vector3 centre, Vector3 size)
         {
-            var key = Vector3Int.RoundToInt(size * 4f);
-            if (cubeCache.TryGetValue(key, out var cached)) return cached;
-            var s = (Vector3)key / 4f;
-
-            var verts = new List<Vector3>();
-            var normals = new List<Vector3>();
-            var uvs = new List<Vector2>();
-            var tris = new List<int>();
-            void Face(Vector3 n, Vector3 a, Vector3 b, float sa, float sb)
+            var verts = new Vector3[24];
+            var normals = new Vector3[24];
+            var uvs = new Vector2[24];
+            var tris = new int[36];
+            int f = 0;
+            void Face(Vector3 n, Vector3 a, Vector3 b)
             {
-                int i = verts.Count;
+                int i = f * 4;
                 var c = n * 0.5f;
-                verts.Add(c - a * 0.5f - b * 0.5f);
-                verts.Add(c + a * 0.5f - b * 0.5f);
-                verts.Add(c + a * 0.5f + b * 0.5f);
-                verts.Add(c - a * 0.5f + b * 0.5f);
-                for (int k = 0; k < 4; k++) normals.Add(n);
-                uvs.Add(new Vector2(0f, 0f));
-                uvs.Add(new Vector2(sa, 0f));
-                uvs.Add(new Vector2(sa, sb));
-                uvs.Add(new Vector2(0f, sb));
-                tris.AddRange(new[] { i, i + 2, i + 1, i, i + 3, i + 2 });
+                verts[i] = c - a * 0.5f - b * 0.5f;
+                verts[i + 1] = c + a * 0.5f - b * 0.5f;
+                verts[i + 2] = c + a * 0.5f + b * 0.5f;
+                verts[i + 3] = c - a * 0.5f + b * 0.5f;
+                for (int k = 0; k < 4; k++)
+                {
+                    normals[i + k] = n;
+                    var world = centre + Vector3.Scale(verts[i + k], size);
+                    uvs[i + k] = new Vector2(Vector3.Dot(world, a), Vector3.Dot(world, b));
+                }
+                int t = f * 6;
+                tris[t] = i; tris[t + 1] = i + 2; tris[t + 2] = i + 1;
+                tris[t + 3] = i; tris[t + 4] = i + 3; tris[t + 5] = i + 2;
+                f++;
             }
-            // Side faces run U along the wall and V up it, so grime streaks hang downward.
-            Face(Vector3.forward, Vector3.left, Vector3.up, s.x, s.y);
-            Face(Vector3.back, Vector3.right, Vector3.up, s.x, s.y);
-            Face(Vector3.right, Vector3.forward, Vector3.up, s.z, s.y);
-            Face(Vector3.left, Vector3.back, Vector3.up, s.z, s.y);
-            Face(Vector3.up, Vector3.right, Vector3.forward, s.x, s.z);
-            Face(Vector3.down, Vector3.right, Vector3.back, s.x, s.z);
+            Face(Vector3.forward, Vector3.left, Vector3.up);
+            Face(Vector3.back, Vector3.right, Vector3.up);
+            Face(Vector3.right, Vector3.forward, Vector3.up);
+            Face(Vector3.left, Vector3.back, Vector3.up);
+            Face(Vector3.up, Vector3.right, Vector3.forward);
+            Face(Vector3.down, Vector3.right, Vector3.back);
 
-            var mesh = new Mesh { name = $"MetreCube_{key.x}_{key.y}_{key.z}" };
-            mesh.SetVertices(verts);
-            mesh.SetNormals(normals);
-            mesh.SetUVs(0, uvs);
-            mesh.SetTriangles(tris, 0);
+            var mesh = new Mesh { name = "WorldCube" };
+            mesh.vertices = verts;
+            mesh.normals = normals;
+            mesh.uv = uvs;
+            mesh.triangles = tris;
             mesh.RecalculateTangents();
             mesh.RecalculateBounds();
-            cubeCache[key] = mesh;
             return mesh;
         }
 
@@ -4026,7 +4401,7 @@ namespace ThePitt.World.Generation
                 enableInstancing = true,
             };
             made.SetFloat("_Metallic", metallic);
-            made.SetFloat("_Smoothness", 0.15f);
+            made.SetFloat("_Smoothness", 0f);
             return made;
         }
 
