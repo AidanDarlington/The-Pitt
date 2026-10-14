@@ -461,9 +461,26 @@ namespace ThePitt.Player
             }
             else
             {
-                // A length of rebar or pipe, held low on the right.
-                Part(PrimitiveType.Cylinder, new Vector3(0.24f, -0.12f, 0.48f), new Vector3(0.035f, 0.32f, 0.035f), new Vector3(55f, 0f, -10f), rust);
-                Part(PrimitiveType.Cube, new Vector3(0.24f, -0.3f, 0.36f), new Vector3(0.08f, 0.07f, 0.09f), Vector3.zero, skin);
+                // Held low on the right by the handle end: a wrapped grip in the hand, the shaft running up and
+                // away, and on a club a heavy block head at the far end (like its icon).
+                bool club = Equipped.DisplayName.Contains("Club");
+                bool heavy = Equipped.DisplayName.Contains("Heavy");
+                var hand = Part(PrimitiveType.Cube, new Vector3(0.24f, -0.3f, 0.36f), new Vector3(0.08f, 0.07f, 0.09f), Vector3.zero, skin);
+                var shaft = Part(PrimitiveType.Cylinder, Vector3.zero, new Vector3(0.03f, club ? 0.3f : 0.2f, 0.03f), new Vector3(55f, 0f, -10f), heavy ? metal : rust);
+                // Slid along itself until the hand is near the bottom end (placed in world space, like the tool heads).
+                var halfLength = shaft.TransformPoint(Vector3.up) - shaft.position;
+                shaft.position = hand.position + halfLength * 0.8f;
+                for (int i = 0; i < 3; i++)
+                {
+                    var wrap = Part(PrimitiveType.Cylinder, Vector3.zero, new Vector3(0.036f, 0.012f, 0.036f), Vector3.zero, grip);
+                    wrap.SetPositionAndRotation(shaft.TransformPoint(new Vector3(0f, -0.95f + i * 0.13f, 0f)), shaft.rotation);
+                }
+                if (club)
+                {
+                    float size = heavy ? 0.1f : 0.08f;
+                    var head = Part(PrimitiveType.Cube, Vector3.zero, new Vector3(size, size * 1.3f, size), Vector3.zero, metal);
+                    head.SetPositionAndRotation(shaft.TransformPoint(new Vector3(0f, 0.92f, 0f)), shaft.rotation);
+                }
             }
         }
 

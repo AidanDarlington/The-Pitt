@@ -14,10 +14,10 @@ namespace ThePitt.Player
         [SerializeField, Min(1f)] private float maxThirst = 100f;
 
         [Header("Rates per in-game hour")]
-        [Tooltip("100 over 36 hours = empty in a day and a half.")]
-        [SerializeField, Min(0f)] private float hungerDrain = 100f / 36f;
-        [Tooltip("100 over 24 hours = empty in one day.")]
-        [SerializeField, Min(0f)] private float thirstDrain = 100f / 24f;
+        [Tooltip("100 over 72 hours = empty in three days.")]
+        [SerializeField, Min(0f)] private float hungerDrain = 100f / 72f;
+        [Tooltip("100 over 48 hours = empty in two days.")]
+        [SerializeField, Min(0f)] private float thirstDrain = 100f / 48f;
         [SerializeField, Min(1f)] private float sprintDrainMultiplier = 2f;
         [Tooltip("Health lost per hour for each of hunger/thirst that is empty.")]
         [SerializeField, Min(0f)] private float starvingDamage = 6f;

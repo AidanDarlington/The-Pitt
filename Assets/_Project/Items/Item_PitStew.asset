@@ -16,7 +16,7 @@ MonoBehaviour:
   description: Meat and Bitterleaf stewed down together. The closest thing to a real meal in The Pitt, and priced like it.
   category: 0
   icon: {fileID: 1964792461528444530, guid: 90a20f42ee6855a13af3a7c1adbd8b33, type: 3}
-  maxStack: 10
+  maxStack: 20
   baseValue: 34
   hasQuality: 1
   nutrition: 50

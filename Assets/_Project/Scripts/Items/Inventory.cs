@@ -20,8 +20,8 @@ namespace ThePitt.Items
         public bool IsEmpty => item == null || quantity <= 0;
         public static ItemStack Empty => default;
 
-        public bool CanStackWith(ItemDefinition other, ItemQuality otherQuality) =>
-            !IsEmpty && item == other && quality == otherQuality && quantity < item.MaxStack;
+        public bool CanStackWith(ItemDefinition other, ItemQuality otherQuality, int limit) =>
+            !IsEmpty && item == other && quality == otherQuality && quantity < limit;
     }
 
     /// <summary>A fixed number of slots holding item stacks. Used by the player and by storage.</summary>
@@ -29,6 +29,24 @@ namespace ThePitt.Items
     {
         [SerializeField, Min(1)] private int slotCount = 24;
         [SerializeField] private ItemStack[] slots;
+
+        /// <summary>Most of a tool, weapon or structure one storage slot holds.</summary>
+        public const int StoredGearStack = 5;
+
+        /// <summary>
+        /// A storage crate: tools, weapons and structures stack to <see cref="StoredGearStack"/>, everything
+        /// else to twice what it does on the player.
+        /// </summary>
+        public bool IsStorage { get; set; }
+
+        /// <summary>How many of an item one slot here holds.</summary>
+        public int StackLimit(ItemDefinition item)
+        {
+            if (item == null) return 1;
+            if (!IsStorage) return item.MaxStack;
+            bool gear = item.Category is ItemCategory.Tool or ItemCategory.Structure || (item.Category == ItemCategory.Weapon && !item.IsAmmo);
+            return gear ? StoredGearStack : item.MaxStack * 2;
+        }
 
         /// <summary>Fired whenever any slot changes.</summary>
         public event Action Changed;
@@ -63,15 +81,15 @@ namespace ThePitt.Items
             // Top up matching stacks first, then fill empty slots.
             for (int i = 0; i < Slots.Length && remaining > 0; i++)
             {
-                if (!Slots[i].CanStackWith(item, quality)) continue;
-                int moved = Mathf.Min(remaining, item.MaxStack - Slots[i].quantity);
+                if (!Slots[i].CanStackWith(item, quality, StackLimit(item))) continue;
+                int moved = Mathf.Min(remaining, StackLimit(item) - Slots[i].quantity);
                 Slots[i].quantity += moved;
                 remaining -= moved;
             }
             for (int i = 0; i < Slots.Length && remaining > 0; i++)
             {
                 if (!Slots[i].IsEmpty) continue;
-                int moved = Mathf.Min(remaining, item.MaxStack);
+                int moved = Mathf.Min(remaining, StackLimit(item));
                 Slots[i] = new ItemStack(item, moved, quality);
                 remaining -= moved;
             }
@@ -85,6 +103,32 @@ namespace ThePitt.Items
             return added;
         }
 
+        /// <summary>
+        /// Adds as much as fits into one slot: an empty one, or a stack of the same item and quality.
+        /// Returns how many were added.
+        /// </summary>
+        public int AddToSlot(int index, ItemDefinition item, int amount, ItemQuality quality = ItemQuality.Standard)
+        {
+            if (item == null || amount <= 0 || index < 0 || index >= Slots.Length) return 0;
+            if (!item.HasQuality) quality = ItemQuality.Standard;
+            var slot = Slots[index];
+            int moved;
+            if (slot.IsEmpty)
+            {
+                moved = Mathf.Min(amount, StackLimit(item));
+                Slots[index] = new ItemStack(item, moved, quality);
+            }
+            else if (slot.CanStackWith(item, quality, StackLimit(item)))
+            {
+                moved = Mathf.Min(amount, StackLimit(item) - slot.quantity);
+                Slots[index].quantity += moved;
+            }
+            else return 0;
+            Changed?.Invoke();
+            ItemAdded?.Invoke(item, moved, quality);
+            return moved;
+        }
+
         /// <summary>How many more of this item and quality would fit.</summary>
         public int SpaceFor(ItemDefinition item, ItemQuality quality = ItemQuality.Standard)
         {
@@ -93,8 +137,8 @@ namespace ThePitt.Items
             int space = 0;
             foreach (var slot in Slots)
             {
-                if (slot.IsEmpty) space += item.MaxStack;
-                else if (slot.item == item && slot.quality == quality) space += item.MaxStack - slot.quantity;
+                if (slot.IsEmpty) space += StackLimit(item);
+                else if (slot.item == item && slot.quality == quality) space += Mathf.Max(0, StackLimit(item) - slot.quantity);
             }
             return space;
         }
@@ -149,9 +193,9 @@ namespace ThePitt.Items
             if (from == to || from < 0 || to < 0 || from >= Slots.Length || to >= Slots.Length || Slots[from].IsEmpty) return;
             var a = Slots[from];
             var b = Slots[to];
-            if (!b.IsEmpty && b.CanStackWith(a.item, a.quality))
+            if (!b.IsEmpty && b.CanStackWith(a.item, a.quality, StackLimit(a.item)))
             {
-                int moved = Mathf.Min(a.quantity, a.item.MaxStack - b.quantity);
+                int moved = Mathf.Min(a.quantity, StackLimit(a.item) - b.quantity);
                 if (moved <= 0) return;
                 b.quantity += moved;
                 a.quantity -= moved;
@@ -180,6 +224,31 @@ namespace ThePitt.Items
             Slots[index].quantity -= taken;
             if (Slots[index].quantity <= 0) Slots[index] = ItemStack.Empty;
             return taken;
+        }
+    }
+
+    /// <summary>Several inventories counted and drawn from as one: the player's, then storage nearby.</summary>
+    public static class ItemSources
+    {
+        public static int Count(System.Collections.Generic.IReadOnlyList<Inventory> sources, ItemDefinition item, ItemQuality? quality = null)
+        {
+            int total = 0;
+            if (sources != null)
+                foreach (var inventory in sources) total += inventory.Count(item, quality);
+            return total;
+        }
+
+        /// <summary>Removes up to <paramref name="amount"/>, from the first source first. Returns how many were removed.</summary>
+        public static int Remove(System.Collections.Generic.IReadOnlyList<Inventory> sources, ItemDefinition item, int amount, ItemQuality? quality = null)
+        {
+            int removed = 0;
+            if (sources != null)
+                foreach (var inventory in sources)
+                {
+                    if (removed >= amount) break;
+                    removed += inventory.Remove(item, amount - removed, quality);
+                }
+            return removed;
         }
     }
 }

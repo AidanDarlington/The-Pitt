@@ -18,7 +18,8 @@ namespace ThePitt.Properties
     /// <item>Over a cap: they seize stations until every utility is back within its cap, biggest draws first.</item>
     /// <item>Overdue debt: they collect what's owed plus a fine, from the wallet first, then by seizing stations.</item>
     /// </list>
-    /// Anything put right before they arrive is checked again: they can leave empty-handed.
+    /// A raid over the caps is called off as soon as the property is back within them (stations taken down, or
+    /// a cap raised); anything else put right before they arrive is checked again: they can leave empty-handed.
     /// </summary>
     public class WatcherRaids : MonoBehaviour
     {
@@ -41,6 +42,7 @@ namespace ThePitt.Properties
 
         private static readonly Color Warning = new(0.95f, 0.72f, 0.25f);
         private static readonly Color Raid = new(0.9f, 0.3f, 0.25f);
+        private static readonly Color CalledOff = new(0.55f, 0.85f, 0.45f);
 
         private class Planned
         {
@@ -105,6 +107,18 @@ namespace ThePitt.Properties
             for (int i = planned.Count - 1; i >= 0; i--)
             {
                 var p = planned[i];
+                if (p.utilities && p.property.RaidRisk() <= 0f)
+                {
+                    // Back within every cap: no reason to come for the utilities.
+                    p.utilities = false;
+                    if (!p.debt)
+                    {
+                        planned.RemoveAt(i);
+                        UnlockPopupUI.Notify("WATCHERS · CALLED OFF", $"No raid on {p.property.DisplayName} today",
+                            "It's back within its utility limits. Keep it that way.", CalledOff, 8f);
+                        continue;
+                    }
+                }
                 if (time.Day < p.day || (time.Day == p.day && time.Hour < p.hour)) continue;
                 planned.RemoveAt(i);
                 Carry(p);

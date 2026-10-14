@@ -54,7 +54,8 @@ namespace ThePitt.Factions
             /// <summary>Open war with the player, until peace is bought.</summary>
             public bool atWar;
 
-            /// <summary>Today's request: so many goods of a kind, for a reward.</summary>
+            /// <summary>Today's request: so many of one item (food, a drug or a weapon), for a reward.</summary>
+            public ItemDefinition requestItem;
             public ItemCategory requestCategory;
             public int requestCount;
             public int requestReward;
@@ -120,9 +121,14 @@ namespace ThePitt.Factions
         [SerializeField, Min(1f)] private float maxDesperationPrice = 1.6f;
 
         [Header("Daily Requests")]
+        [Tooltip("How many are asked for of something cheap (under 15 scrip), mid-priced (under 50), and dear.")]
+        [SerializeField] private Vector2Int requestCountCheap = new(6, 10);
         [SerializeField] private Vector2Int requestCount = new(3, 6);
-        [Tooltip("Reward per item, before the gang's generosity: food, drugs, weapons.")]
-        [SerializeField] private Vector3 requestPayPerItem = new(35f, 45f, 60f);
+        [SerializeField] private Vector2Int requestCountDear = new(1, 3);
+        [Tooltip("Reward per item as a multiple of its value, before the gang's generosity.")]
+        [SerializeField, Min(0f)] private float requestPremium = 1.6f;
+        [Tooltip("Standing from which a gang will sell its recipe: the only way to get it.")]
+        [SerializeField, Range(-100f, 100f)] private float recipeStanding = 45f;
         [Tooltip("Standing for a filled request, before the gang's goodwill.")]
         [SerializeField, Min(0f)] private float requestStanding = 6f;
 
@@ -140,7 +146,7 @@ namespace ThePitt.Factions
         [SerializeField, Range(-100f, 0f)] private float hostileStanding = -50f;
         [Tooltip("Below this a gang is Unfriendly and pays less.")]
         [SerializeField, Range(-100f, 0f)] private float unfriendlyStanding = -15f;
-        [Tooltip("At or above this a gang is Friendly: pays more and teaches its recipe.")]
+        [Tooltip("At or above this a gang is Friendly: pays more.")]
         [SerializeField, Range(0f, 100f)] private float friendlyStanding = 30f;
         [Tooltip("Price multipliers for Unfriendly, Neutral, Friendly and Allied gangs buying from the player.")]
         [SerializeField] private Vector4 tradeMultipliers = new(0.8f, 1f, 1.15f, 1.3f);
@@ -751,7 +757,6 @@ namespace ThePitt.Factions
             if (f.standing < f.definition.AllianceStanding)
                 return $"They want more respect first (standing {f.definition.AllianceStanding:0} needed).";
             f.allied = true;
-            UnlockRecipeIfEarned(f);
             fallout = Ripple(f, -enemyOfMyFriend);
             RelationsChanged?.Invoke();
             return null;
@@ -784,7 +789,6 @@ namespace ThePitt.Factions
             {
                 if (o == f || o.eliminated || o.IsPlayer || Opinion(f, o) > enemyOpinion) continue;
                 o.standing = Mathf.Clamp(o.standing + delta, -100f, 100f);
-                UnlockRecipeIfEarned(o);
                 names.Add(The(o.Name));
             }
             return names.Count > 0 ? string.Join(" and ", names) : null;
@@ -805,9 +809,12 @@ namespace ThePitt.Factions
 
         public bool KnowsRecipe(FactionState f) => f?.definition.SignatureRecipe != null && RecipeBook.Knows(f.definition.SignatureRecipe);
 
-        /// <summary>Their recipe can be bought from anyone the player isn't fighting.</summary>
+        /// <summary>Standing from which a gang will sell its recipe.</summary>
+        public float RecipeSaleStanding => recipeStanding;
+
+        /// <summary>Their recipe is for sale once the player's well enough thought of, and not at war. It's never given away.</summary>
         public bool CanBuyRecipe(FactionState f) =>
-            f?.definition.SignatureRecipe != null && !KnowsRecipe(f) && !f.eliminated && RelationTo(f) > Relation.Hostile;
+            f?.definition.SignatureRecipe != null && !KnowsRecipe(f) && !f.eliminated && !f.atWar && f.standing >= recipeStanding;
 
         public bool BuyRecipe(FactionState f, PlayerWallet wallet)
         {
@@ -820,37 +827,90 @@ namespace ThePitt.Factions
         private void ChangeStanding(FactionState f, float delta)
         {
             f.standing = Mathf.Clamp(f.standing + delta, -100f, 100f);
-            UnlockRecipeIfEarned(f);
             RelationsChanged?.Invoke();
-        }
-
-        /// <summary>Friends and allies teach the player their recipe for free.</summary>
-        private void UnlockRecipeIfEarned(FactionState f)
-        {
-            var r = RelationTo(f);
-            if (!f.IsPlayer && (r == Relation.Friendly || r == Relation.Allied)) RecipeBook.Learn(f.definition.SignatureRecipe);
         }
 
         // ---------------------------------------------------------------- daily requests
 
         private static readonly ItemCategory[] Goods = { ItemCategory.Food, ItemCategory.Drug, ItemCategory.Weapon };
 
-        /// <summary>Tomorrow's request: usually the gang's favoured goods, sometimes something else.</summary>
+        /// <summary>
+        /// Tomorrow's request: one item, usually of the gang's favoured kind. More of cheap things, fewer of
+        /// dear ones, and paid by what it's worth.
+        /// </summary>
         private void NewRequest(FactionState f)
         {
             f.requestOpen = false;
             if (f.eliminated || f.IsPlayer) return;
-            f.requestCategory = rng.NextDouble() < 0.6 ? f.definition.FavouredSupply : Goods[rng.Next(Goods.Length)];
-            if (Array.IndexOf(Goods, f.requestCategory) < 0) f.requestCategory = Goods[rng.Next(Goods.Length)];
-            f.requestCount = rng.Next(requestCount.x, requestCount.y + 1);
-            float each = f.requestCategory switch
+            var category = rng.NextDouble() < 0.6 ? f.definition.FavouredSupply : Goods[rng.Next(Goods.Length)];
+            if (Array.IndexOf(Goods, category) < 0) category = Goods[rng.Next(Goods.Length)];
+            var choices = Requestable(category);
+            if (choices.Count == 0)
             {
-                ItemCategory.Food => requestPayPerItem.x,
-                ItemCategory.Drug => requestPayPerItem.y,
-                _ => requestPayPerItem.z,
-            };
-            f.requestReward = Mathf.RoundToInt(f.requestCount * each * f.definition.DealGenerosity / 5f) * 5;
+                foreach (var c in Goods) choices.AddRange(Requestable(c));
+                if (choices.Count == 0) return;
+            }
+            var item = choices[rng.Next(choices.Count)];
+            int value = Mathf.Max(1, item.BaseValue);
+            var range = value < 15 ? requestCountCheap : value < 50 ? requestCount : requestCountDear;
+            f.requestItem = item;
+            f.requestCategory = item.Category;
+            f.requestCount = rng.Next(range.x, range.y + 1);
+            f.requestReward = Mathf.Max(5, Mathf.RoundToInt(f.requestCount * value * requestPremium * f.definition.DealGenerosity / 5f) * 5);
             f.requestOpen = true;
+        }
+
+        private List<ItemDefinition> requestable;
+        private HashSet<ItemDefinition> taughtOnly;
+
+        /// <summary>
+        /// What a gang might ask for of a kind: food that fills you (not water), drugs, and weapons (not ammo).
+        /// Nothing only a skill milestone or a gang can teach, unless the player has learned how to make it.
+        /// </summary>
+        private List<ItemDefinition> Requestable(ItemCategory category)
+        {
+            if (requestable == null) BuildRequestable();
+            var list = new List<ItemDefinition>();
+            foreach (var item in requestable)
+            {
+                if (item.Category != category) continue;
+                if (taughtOnly.Contains(item) && !LearnedOutput(item)) continue;
+                if (category == ItemCategory.Food && item.Nutrition <= 0f) continue;
+                if (category == ItemCategory.Weapon && !item.IsWeapon) continue;
+                list.Add(item);
+            }
+            return list;
+        }
+
+        private void BuildRequestable()
+        {
+            requestable = new List<ItemDefinition>();
+            taughtOnly = new HashSet<ItemDefinition>();
+            var taught = new HashSet<RecipeDefinition>();
+            foreach (var f in states)
+                if (f.definition.SignatureRecipe != null) taught.Add(f.definition.SignatureRecipe);
+            foreach (var skill in Progression.Skills.All)
+                foreach (var m in Progression.Skills.Milestones(skill))
+                    if (m.Recipe != null) taught.Add(m.Recipe);
+            if (SaveRegistry.Instance == null) return;
+            var otherwiseMade = new HashSet<ItemDefinition>();
+            foreach (var asset in SaveRegistry.Instance.Assets)
+            {
+                if (asset is ItemDefinition item) requestable.Add(item);
+                else if (asset is RecipeDefinition r && r.Output != null)
+                {
+                    if (taught.Contains(r)) taughtOnly.Add(r.Output);
+                    else otherwiseMade.Add(r.Output);
+                }
+            }
+            taughtOnly.ExceptWith(otherwiseMade);
+        }
+
+        private static bool LearnedOutput(ItemDefinition item)
+        {
+            foreach (var r in RecipeBook.Learned)
+                if (r.Output == item) return true;
+            return false;
         }
 
         public static int CountGoods(Inventory inventory, ItemCategory category)
@@ -893,13 +953,14 @@ namespace ThePitt.Factions
         }
 
         public bool CanFillRequest(FactionState f, Inventory inventory) =>
-            f != null && f.requestOpen && WillTrade(f) && inventory != null && CountGoods(inventory, f.requestCategory) >= f.requestCount;
+            f != null && f.requestOpen && f.requestItem != null && WillTrade(f) && inventory != null && inventory.Count(f.requestItem) >= f.requestCount;
 
         /// <summary>Hands over the goods for today's request: scrip, standing, and the goods feed the gang.</summary>
         public bool FillRequest(FactionState f, Inventory inventory, PlayerWallet wallet)
         {
             if (!CanFillRequest(f, inventory) || wallet == null) return false;
-            int value = TakeGoods(inventory, c => c == f.requestCategory, f.requestCount);
+            // Any quality will do: the worst goes first.
+            int value = f.requestItem.ValueAt(ItemQuality.Standard) * inventory.Remove(f.requestItem, f.requestCount);
             wallet.Add(f.requestReward);
             f.pendingSupply += value * powerPerScrip * (f.requestCategory == f.definition.FavouredSupply ? favouredMultiplier : 1f);
             f.requestOpen = false;
@@ -1084,6 +1145,7 @@ namespace ThePitt.Factions
                     allied = f.allied,
                     atWar = f.atWar,
                     requestCategory = (int)f.requestCategory,
+                    requestItem = SaveRegistry.IdOf(f.requestItem),
                     requestCount = f.requestCount,
                     requestReward = f.requestReward,
                     requestOpen = f.requestOpen,
@@ -1150,9 +1212,12 @@ namespace ThePitt.Factions
                 if (s.requestCount > 0)
                 {
                     f.requestCategory = (ItemCategory)s.requestCategory;
+                    f.requestItem = SaveRegistry.Lookup<ItemDefinition>(s.requestItem);
                     f.requestCount = s.requestCount;
                     f.requestReward = s.requestReward;
                     f.requestOpen = s.requestOpen;
+                    // Saves from when requests were for any goods of a kind get today's afresh, for one item.
+                    if (f.requestItem == null && f.requestOpen) NewRequest(f);
                 }
             }
 

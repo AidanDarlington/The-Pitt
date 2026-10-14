@@ -9,8 +9,9 @@ using UnityEngine.UI;
 namespace ThePitt.UI
 {
     /// <summary>
-    /// Recipe list for a <see cref="CraftingBench"/>: what's needed, what you have, and a craft button. A
-    /// bar under the header shows the bench's queue, collects finished items, and picks how many to queue.
+    /// Recipe list for a <see cref="CraftingBench"/>: what's needed and what you have. Click a recipe to pick
+    /// it, set how many on its row, then Craft (right of Leave) queues them. A bar under the header shows the
+    /// bench's queue and collects finished items.
     /// </summary>
     public class CraftingUI : MonoBehaviour
     {
@@ -29,13 +30,18 @@ namespace ThePitt.UI
 
         private CraftingBench bench;
         private Inventory inventory;
+        /// <summary>The inventory, then storage in the bench's property: everything ingredients can come from.</summary>
+        private System.Collections.Generic.List<Inventory> sources = new();
         private FirstPersonController controller;
 
         private const int MaxQuantity = 50;
         // How many of each recipe to queue. Fresh (x1) every time the panel opens, and back to x1 once queued.
         private readonly System.Collections.Generic.Dictionary<RecipeDefinition, int> quantities = new();
         private Text queueLabel;
-        private Button collectButton, cancelButton;
+        private Button collectButton, cancelButton, craftButton;
+        private Text craftLabel;
+        private RecipeDefinition selected;
+        private static readonly Color SelectedRow = new(1f, 0.72f, 0.38f);
 
         public bool IsOpen => panel.activeSelf;
 
@@ -46,6 +52,7 @@ namespace ThePitt.UI
             panel.SetActive(false);
             if (closeButton != null) closeButton.onClick.AddListener(Close);
             BuildQueueBar();
+            BuildCraftButton();
         }
 
         private void OnDestroy()
@@ -70,7 +77,9 @@ namespace ThePitt.UI
             Cursor.visible = true;
 
             quantities.Clear();
-            inventory.Changed += Refresh;
+            selected = null;
+            sources = bench.Sources(inventory);
+            foreach (var source in sources) source.Changed += Refresh;
             // Only the bar each in-game minute; rebuilding the rows that often would fight the mouse.
             bench.Changed += RefreshQueueBar;
             statusLabel.text = "";
@@ -82,7 +91,9 @@ namespace ThePitt.UI
         {
             if (!IsOpen) return;
             panel.SetActive(false);
-            inventory.Changed -= Refresh;
+            foreach (var source in sources)
+                if (source != null) source.Changed -= Refresh;
+            sources.Clear();
             if (bench != null) bench.Changed -= RefreshQueueBar;
             if (controller != null) controller.InputEnabled = true;
             Cursor.lockState = CursorLockMode.Locked;
@@ -94,12 +105,12 @@ namespace ThePitt.UI
 
         private int QuantityOf(RecipeDefinition recipe) => quantities.TryGetValue(recipe, out int q) ? q : 1;
 
-        /// <summary>The most of a recipe that can be queued: what the inventory covers and the queue has room for.</summary>
+        /// <summary>The most of a recipe that can be queued: what the inventory and storage cover and the queue has room for.</summary>
         private int MaxOf(RecipeDefinition recipe)
         {
             int most = Mathf.Min(MaxQuantity, bench.QueueSpace);
             foreach (var i in recipe.Ingredients)
-                if (i.item != null && i.amount > 0) most = Mathf.Min(most, inventory.Count(i.item) / i.amount);
+                if (i.item != null && i.amount > 0) most = Mathf.Min(most, recipe.Have(sources, i) / i.amount);
             return Mathf.Max(1, most);
         }
 
@@ -111,11 +122,11 @@ namespace ThePitt.UI
             foreach (var i in recipe.Ingredients)
             {
                 if (i.item == null) continue;
-                int have = inventory.Count(i.item);
+                int have = recipe.Have(sources, i);
                 int need = i.amount * quantity;
                 var color = have >= need ? haveColor : missingColor;
                 if (sb.Length > 0) sb.Append("  ·  ");
-                sb.Append($"{i.item.DisplayName} <color=#{Hex(color)}>{have}/{need}</color>");
+                sb.Append($"{recipe.IngredientName(i)} <color=#{Hex(color)}>{have}/{need}</color>");
             }
             return sb.ToString();
         }
@@ -147,26 +158,64 @@ namespace ThePitt.UI
                 }
 
                 int quantity = QuantityOf(recipe);
-                // Asking for more than can be afforded still queues as many as it can.
-                bool canCraft = bench.QueueSpace > 0 && recipe.CanAfford(inventory);
                 string amount = recipe.OutputAmount > 1 ? $" x{recipe.OutputAmount}" : "";
                 string count = quantity > 1 ? $"<color=#{Hex(haveColor)}>{quantity} × </color>" : "";
-                int minutes = bench.MinutesFor(recipe);
-                string time = quantity > 1 ? $"{minutes} min each · {minutes * quantity} min" : $"{minutes} min";
+                float seconds = bench.SecondsFor(recipe);
+                string time = quantity > 1 ? $"{CraftingBench.Duration(seconds)} each · {CraftingBench.Duration(seconds * quantity)}" : CraftingBench.Duration(seconds);
                 label.text =
                     $"<b>{count}{recipe.DisplayName}{amount}</b>   <size=16>{time}</size>\n" +
                     $"<size=16>{IngredientLine(recipe)}</size>";
-                // Leave room for the quantity controls on the right.
+                // Leave room for the output's icon on the left and the quantity controls on the right.
+                AddIcon((RectTransform)row.transform, recipe.Output);
+                label.rectTransform.offsetMin = new Vector2(label.rectTransform.offsetMin.x + IconSize + 10f, label.rectTransform.offsetMin.y);
                 label.rectTransform.offsetMax = new Vector2(label.rectTransform.offsetMax.x - 230f, label.rectTransform.offsetMax.y);
 
-                button.interactable = canCraft;
+                // Picking it; Craft queues it.
                 var captured = recipe;
-                button.onClick.AddListener(() => Craft(captured));
+                button.onClick.AddListener(() => Select(captured));
+                if (recipe == selected) row.GetComponent<Image>().color = SelectedRow;
                 AddQuantityControls((RectTransform)row.transform, recipe);
 
                 // Hover only: an EventTrigger would also swallow the scroll wheel meant for the list.
                 row.AddComponent<HoverRelay>().Entered = () => ShowDetails(captured);
             }
+            RefreshCraftButton();
+        }
+
+        private void Select(RecipeDefinition recipe)
+        {
+            selected = recipe;
+            ShowDetails(recipe);
+            Refresh();
+        }
+
+        /// <summary>Craft is live with an unlocked recipe picked, room in the queue and the ingredients for at least one.</summary>
+        private void RefreshCraftButton()
+        {
+            if (craftButton == null) return;
+            if (selected != null && !RecipeUnlocks.IsUnlocked(selected)) selected = null;
+            int quantity = selected != null ? QuantityOf(selected) : 1;
+            craftLabel.text = quantity > 1 ? $"Craft ×{quantity}" : "Craft";
+            // Asking for more than can be afforded still queues as many as it can.
+            craftButton.interactable = selected != null && bench.QueueSpace > 0 && selected.CanAfford(sources);
+        }
+
+        private const float IconSize = 46f;
+
+        /// <summary>What the recipe makes, on the left of its row. Only unlocked recipes get one.</summary>
+        private static void AddIcon(RectTransform row, ItemDefinition output)
+        {
+            if (output == null || output.Icon == null) return;
+            var go = new GameObject("Icon", typeof(RectTransform), typeof(Image));
+            var rt = (RectTransform)go.transform;
+            rt.SetParent(row, false);
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0f, 0.5f);
+            rt.anchoredPosition = new Vector2(10f, 0f);
+            rt.sizeDelta = new Vector2(IconSize, IconSize);
+            var image = go.GetComponent<Image>();
+            image.sprite = output.Icon;
+            image.preserveAspect = true;
+            image.raycastTarget = false;
         }
 
         /// <summary>Min · − · x3 · + · Max on the right of a recipe row. Shift steps by 10.</summary>
@@ -219,6 +268,8 @@ namespace ThePitt.UI
         private void SetQuantity(RecipeDefinition recipe, int value)
         {
             quantities[recipe] = Mathf.Clamp(value, 1, MaxQuantity);
+            // Setting how many picks the recipe too.
+            selected = recipe;
             if (bench != null) Refresh();
         }
 
@@ -229,8 +280,7 @@ namespace ThePitt.UI
         {
             if (bench.IsBusy)
             {
-                int minutes = bench.MinutesToClear;
-                string left = minutes >= 60 ? $"{minutes / 60}h {minutes % 60:00}m" : $"{minutes} min";
+                string left = CraftingBench.Duration(bench.SecondsToClear);
                 string waiting = bench.Waiting > 0 ? $" · {bench.Waiting} queued" : "";
                 queueLabel.text = $"Crafting <b>{bench.Current.DisplayName}</b> {bench.Progress:P0}{waiting} · {left} left";
             }
@@ -254,7 +304,7 @@ namespace ThePitt.UI
             bar.sizeDelta = new Vector2(820f, 32f);
             var hint = panel.transform.Find("Hint");
             if (hint != null && hint.TryGetComponent<Text>(out var hintText))
-                hintText.text = "Click a recipe to queue it  ·  set how many on the right";
+                hintText.text = "Pick a recipe  ·  set how many on the right  ·  Craft";
             LayOutPanel();
 
             queueLabel = BarText(bar, font, "", TextAnchor.MiddleLeft, new Vector2(0f, 0f), new Vector2(430f, 32f), 17);
@@ -311,7 +361,8 @@ namespace ThePitt.UI
             scroll.movementType = ScrollRect.MovementType.Clamped;
             scroll.scrollSensitivity = 30f;
 
-            float leaveLeft = closeButton != null ? ((RectTransform)closeButton.transform).sizeDelta.x + 40f : 160f;
+            // Craft has the bottom-right corner (Leave is top right).
+            float leaveLeft = CraftWidth + 40f;
             var details = detailsLabel.rectTransform;
             details.anchorMin = details.anchorMax = details.pivot = Vector2.zero;
             details.anchoredPosition = new Vector2(side, 14f);
@@ -325,6 +376,44 @@ namespace ThePitt.UI
             status.sizeDelta = new Vector2(panelWidth - side * 2f, 24f);
             statusLabel.alignment = TextAnchor.MiddleLeft;
             statusLabel.fontSize = 17;
+        }
+
+        private const float CraftWidth = 150f;
+
+        /// <summary>Craft in the bottom-right corner where Leave was; Leave goes up to the top-right corner.</summary>
+        private void BuildCraftButton()
+        {
+            if (closeButton == null) return;
+            var close = (RectTransform)closeButton.transform;
+            var go = new GameObject("CraftButton", typeof(RectTransform), typeof(Image), typeof(Button));
+            var rt = (RectTransform)go.transform;
+            rt.SetParent(close.parent, false);
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(1f, 0f);
+            rt.anchoredPosition = close.anchoredPosition;
+            rt.sizeDelta = new Vector2(CraftWidth, close.sizeDelta.y);
+            var bottomRight = close.anchoredPosition;
+            close.anchorMin = close.anchorMax = close.pivot = new Vector2(1f, 1f);
+            close.anchoredPosition = new Vector2(bottomRight.x, -bottomRight.y);
+
+            var image = go.GetComponent<Image>();
+            image.color = new Color(0.2f, 0.36f, 0.16f, 1f);
+            craftButton = go.GetComponent<Button>();
+            craftButton.targetGraphic = image;
+            var colours = craftButton.colors;
+            colours.disabledColor = new Color(0.45f, 0.45f, 0.45f, 0.5f);
+            craftButton.colors = colours;
+            craftButton.onClick.AddListener(() =>
+            {
+                if (selected != null) Craft(selected);
+            });
+
+            var closeLabel = closeButton.GetComponentInChildren<Text>();
+            craftLabel = BarText(rt, headerLabel.font, "Craft", TextAnchor.MiddleCenter, Vector2.zero, rt.sizeDelta,
+                closeLabel != null ? closeLabel.fontSize : 20);
+            craftLabel.fontStyle = FontStyle.Bold;
+            var lr = (RectTransform)craftLabel.transform;
+            lr.anchorMin = lr.anchorMax = lr.pivot = new Vector2(0.5f, 0.5f);
+            lr.anchoredPosition = Vector2.zero;
         }
 
         private float panelWidth => ((RectTransform)panel.transform).sizeDelta.x;

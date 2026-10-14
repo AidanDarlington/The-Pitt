@@ -66,7 +66,8 @@ namespace ThePitt.UI
         private void Show(string caption, RecipeDefinition recipe)
         {
             if (recipe == null) return;
-            AddCard(caption, $"{recipe.DisplayName}  <size=13><color=#9a958c>· {Where(recipe.Station)}</color></size>", null, Accent, holdTime);
+            AddCard(caption, $"{recipe.DisplayName}  <size=13><color=#9a958c>· {Where(recipe.Station)}</color></size>", null, Accent, holdTime,
+                recipe.Output != null ? recipe.Output.Icon : null);
             AudioManager.Play2D(AudioManager.Library?.craftDone, 0.45f);
         }
 
@@ -79,7 +80,9 @@ namespace ThePitt.UI
             if (Instance != null) Instance.AddCard(caption, title, detail, accent, seconds);
         }
 
-        private void AddCard(string caption, string title, string detail, Color accent, float hold)
+        private const float IconSize = 44f;
+
+        private void AddCard(string caption, string title, string detail, Color accent, float hold, Sprite icon = null)
         {
             while (cards.Count >= maxCards)
             {
@@ -92,7 +95,8 @@ namespace ThePitt.UI
             rect.SetParent(column, false);
             card.GetComponent<Image>().color = new Color(0.06f, 0.06f, 0.07f, 0.88f);
             var layout = card.GetComponent<VerticalLayoutGroup>();
-            layout.padding = new RectOffset(14, 10, 8, 9);
+            // Room on the right for the icon, if there is one.
+            layout.padding = new RectOffset(14, icon != null ? 18 + (int)IconSize : 10, 8, 9);
             layout.spacing = 1f;
             layout.childControlWidth = layout.childControlHeight = true;
             layout.childForceExpandWidth = true;
@@ -107,6 +111,21 @@ namespace ThePitt.UI
             ar.pivot = new Vector2(0f, 0.5f);
             ar.sizeDelta = new Vector2(4f, 0f);
             bar.GetComponent<Image>().color = accent;
+
+            if (icon != null)
+            {
+                var pic = new GameObject("Icon", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
+                var pr = (RectTransform)pic.transform;
+                pr.SetParent(rect, false);
+                pic.GetComponent<LayoutElement>().ignoreLayout = true;
+                pr.anchorMin = pr.anchorMax = pr.pivot = new Vector2(1f, 0.5f);
+                pr.anchoredPosition = new Vector2(-10f, 0f);
+                pr.sizeDelta = new Vector2(IconSize, IconSize);
+                var image = pic.GetComponent<Image>();
+                image.sprite = icon;
+                image.preserveAspect = true;
+                image.raycastTarget = false;
+            }
 
             Label(rect, caption, 12, accent, FontStyle.Bold);
             Label(rect, title, 18, new Color(0.92f, 0.9f, 0.86f), FontStyle.Normal);

@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 19494ad56171262fe8a67fde01760e4c, type: 3}
   m_Name: Recipe_BoiledWater
   m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Production.RecipeDefinition
-  displayName: Boiled Water
+  displayName: Clean Water
   description: Boil off the worst of it.
   station: 2
   ingredients:
@@ -20,4 +20,6 @@ MonoBehaviour:
     amount: 2
   output: {fileID: 11400000, guid: 3a555897398133e5f8955feb3c3179bd, type: 2}
   outputAmount: 2
-  craftMinutes: 10
+  craftSeconds: 5
+  craftMinutes: -1
+  exactIngredients: 1

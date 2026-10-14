@@ -16,7 +16,7 @@ MonoBehaviour:
   description: A length of pipe straight enough to be a gun barrel. Probably.
   category: 3
   icon: {fileID: -5425963905364318408, guid: 51873027476493dff869268e6dfe269e, type: 3}
-  maxStack: 10
+  maxStack: 20
   baseValue: 9
   hasQuality: 0
   nutrition: 0

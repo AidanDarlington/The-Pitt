@@ -16,7 +16,7 @@ MonoBehaviour:
   description: Mystery Meat cooked through. Still a mystery, but it won't make you sick.
   category: 0
   icon: {fileID: 8498586658504940950, guid: 47bab1fb536407e65a67fe8218c2dfec, type: 3}
-  maxStack: 10
+  maxStack: 20
   baseValue: 12
   hasQuality: 1
   nutrition: 30

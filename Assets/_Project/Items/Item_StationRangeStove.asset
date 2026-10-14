@@ -16,12 +16,13 @@ MonoBehaviour:
   description: A big range with more burners. Cooks half again as fast.
   category: 6
   icon: {fileID: -4183308316939188372, guid: e81489f16078c1ed39643ec74ecdfe0e, type: 3}
-  maxStack: 3
+  maxStack: 1
   baseValue: 70
   hasQuality: 0
   nutrition: 0
   hydration: 0
   healthEffect: 0
+  worldModel: {fileID: 0}
   placeablePrefab: {fileID: 5851957751234986113, guid: c2b6f1a676c541358aee34c8f8a301b2, type: 3}
   utilityDraw: {x: 1, y: 1, z: 2}
   effectMinutes: 0

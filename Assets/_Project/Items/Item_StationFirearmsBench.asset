@@ -16,12 +16,13 @@ MonoBehaviour:
   description: A steel bench and gun rack for building firearms.
   category: 6
   icon: {fileID: 5835201246700039080, guid: 946d0c354d317564aa63f5cb28b83ef2, type: 3}
-  maxStack: 3
+  maxStack: 1
   baseValue: 45
   hasQuality: 0
   nutrition: 0
   hydration: 0
   healthEffect: 0
+  worldModel: {fileID: 0}
   placeablePrefab: {fileID: 4787539785691513461, guid: 1ec8560470c11a327bed68442ef530d8, type: 3}
   utilityDraw: {x: 0, y: 2, z: 0}
   effectMinutes: 0
@@ -37,3 +38,5 @@ MonoBehaviour:
   magazineSize: 1
   reloadSeconds: 1.5
   spread: 1.5
+  toolType: 0
+  gatherPower: 10

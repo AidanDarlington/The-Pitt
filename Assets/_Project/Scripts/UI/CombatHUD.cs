@@ -103,7 +103,7 @@ namespace ThePitt.UI
                 return;
             }
             string rounds = combat.IsReloading ? "reloading…" : $"{combat.LoadedRounds}/{w.MagazineSize}";
-            weaponLabel.text = $"{name}   {rounds}   <color=#B0A890>{combat.SpareRounds} spare</color>";
+            weaponLabel.text = $"{name}   {rounds}   <color=#B0A890>Ammo {combat.SpareRounds}</color>";
         }
 
         private void Build()

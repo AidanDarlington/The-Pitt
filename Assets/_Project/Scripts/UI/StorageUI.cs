@@ -12,7 +12,8 @@ namespace ThePitt.UI
 {
     /// <summary>
     /// A <see cref="StorageBox"/>'s slots above the player's inventory. Clicking a stack moves as much of it
-    /// as fits to the other side. Built at runtime on its own canvas.
+    /// as fits to the other side; dragging one drops it on a particular slot, on either side (topping up a
+    /// matching stack, or swapping with a different one). Built at runtime on its own canvas.
     /// </summary>
     public class StorageUI : MonoBehaviour
     {
@@ -29,6 +30,7 @@ namespace ThePitt.UI
         private GameObject panel;
         private RectTransform root;
         private Text header, boxCaption, details;
+        private InputField labelField;
         private Font font;
         private readonly List<(Image background, Image icon, Text count)> boxViews = new();
         private readonly List<(Image background, Image icon, Text count)> playerViews = new();
@@ -41,6 +43,9 @@ namespace ThePitt.UI
         private int openedFrame;
         private Inventory hoveredSide;
         private int hoveredIndex = -1;
+        private Inventory dragSide;
+        private int dragIndex = -1;
+        private Image dragGhost;
 
         public bool IsOpen => panel != null && panel.activeSelf;
 
@@ -66,6 +71,7 @@ namespace ThePitt.UI
             openedFrame = Time.frameCount;
             hoveredSide = null;
             hoveredIndex = -1;
+            EndDrag();
 
             Fill(boxGrid, boxViews, box.Contents.SlotCount, box.Contents);
             Fill(playerGrid, playerViews, player.SlotCount, player);
@@ -84,6 +90,7 @@ namespace ThePitt.UI
         public void Close()
         {
             if (!IsOpen) return;
+            EndDrag();
             if (box != null) box.Contents.Changed -= Refresh;
             if (player != null) player.Changed -= Refresh;
             panel.SetActive(false);
@@ -103,7 +110,8 @@ namespace ThePitt.UI
                 return;
             }
             bool escape = Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame;
-            bool again = interact != null && interact.WasPressedThisFrame() && Time.frameCount != openedFrame;
+            // Typing an "e" into the label shouldn't shut the box.
+            bool again = interact != null && interact.WasPressedThisFrame() && Time.frameCount != openedFrame && !TextEntry.Active;
             if (escape || again) Close();
         }
 
@@ -123,12 +131,91 @@ namespace ThePitt.UI
             else details.text = to == player ? "<color=#E06048>No room in your inventory.</color>" : $"<color=#E06048>The {box.BoxName.ToLowerInvariant()} is full.</color>";
         }
 
+        // ---------------------------------------------------------------- dragging
+
+        private void BeginDrag(Inventory side, int index)
+        {
+            var stack = side.GetSlot(index);
+            if (stack.IsEmpty) return;
+            dragSide = side;
+            dragIndex = index;
+            if (dragGhost == null)
+            {
+                var go = new GameObject("DragGhost", typeof(RectTransform), typeof(Image), typeof(CanvasGroup));
+                go.transform.SetParent(root.parent, false);
+                go.GetComponent<CanvasGroup>().blocksRaycasts = false;
+                dragGhost = go.GetComponent<Image>();
+                dragGhost.raycastTarget = false;
+                dragGhost.preserveAspect = true;
+                ((RectTransform)go.transform).sizeDelta = new Vector2(Cell - 16f, Cell - 16f);
+            }
+            dragGhost.sprite = stack.item.Icon;
+            dragGhost.color = stack.item.Icon != null ? new Color(1f, 1f, 1f, 0.85f) : new Color(0.4f, 0.35f, 0.3f, 0.85f);
+            dragGhost.gameObject.SetActive(true);
+            dragGhost.transform.SetAsLastSibling();
+            MoveGhost();
+        }
+
+        private void MoveGhost()
+        {
+            if (dragGhost == null || dragIndex < 0 || Mouse.current == null) return;
+            var canvas = (RectTransform)dragGhost.transform.parent;
+            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(canvas, Mouse.current.position.ReadValue(), null, out var local))
+                ((RectTransform)dragGhost.transform).localPosition = local;
+        }
+
+        private void EndDrag()
+        {
+            dragSide = null;
+            dragIndex = -1;
+            if (dragGhost != null) dragGhost.gameObject.SetActive(false);
+        }
+
+        /// <summary>
+        /// Drops the dragged stack on a slot. The same side rearranges; across, it fills that slot (empty or a
+        /// matching stack) as far as it'll go, or swaps with a different item if each fits where the other was.
+        /// </summary>
+        private void DropOn(Inventory side, int index)
+        {
+            if (dragSide == null || dragIndex < 0 || box == null) return;
+            var from = dragSide;
+            int fromIndex = dragIndex;
+            EndDrag();
+            if (from == side)
+            {
+                side.Move(fromIndex, index);
+                return;
+            }
+            var a = from.GetSlot(fromIndex);
+            var b = side.GetSlot(index);
+            if (a.IsEmpty) return;
+            int moved = side.AddToSlot(index, a.item, a.quantity, a.quality);
+            if (moved > 0)
+            {
+                from.RemoveAt(fromIndex, moved);
+                AudioManager.Play2D(AudioManager.Library?.click, 0.4f);
+                return;
+            }
+            // A different item there: trade places, if each fits the other's slot.
+            if (!b.IsEmpty && a.quantity <= side.StackLimit(a.item) && b.quantity <= from.StackLimit(b.item))
+            {
+                from.RemoveAt(fromIndex, a.quantity);
+                side.RemoveAt(index, b.quantity);
+                side.AddToSlot(index, a.item, a.quantity, a.quality);
+                from.AddToSlot(fromIndex, b.item, b.quantity, b.quality);
+                AudioManager.Play2D(AudioManager.Library?.click, 0.4f);
+                return;
+            }
+            details.text = "<color=#E06048>That won't fit there.</color>";
+        }
+
         // ---------------------------------------------------------------- refresh
 
         private void Refresh()
         {
             if (box == null) return;
             header.text = $"<b>{box.BoxName.ToUpperInvariant()}</b>";
+            if (!labelField.isFocused) labelField.SetTextWithoutNotify(box.Label);
             Draw(boxViews, box.Contents);
             Draw(playerViews, player);
             RefreshDetails();
@@ -175,7 +262,7 @@ namespace ThePitt.UI
             var stack = hoveredSide.GetSlot(hoveredIndex);
             string quality = stack.item.HasQuality ? $"  ·  <color=#{ColorUtility.ToHtmlStringRGB(stack.quality.DisplayColor())}>{stack.quality}</color>" : "";
             string where = hoveredSide == player ? "into the box" : "into your inventory";
-            details.text = $"<b>{stack.item.DisplayName}</b> ×{stack.quantity}{quality}\n<color=#B0A890>Click to move it {where}</color>";
+            details.text = $"<b>{stack.item.DisplayName}</b> ×{stack.quantity}{quality}\n<color=#B0A890>Click to move it {where}, or drag it to a slot</color>";
         }
 
         private void SetHover(Inventory side, int index)
@@ -209,6 +296,7 @@ namespace ThePitt.UI
             edge.gameObject.AddComponent<Image>().color = Accent;
 
             header = NewText(root, "Header", 24, TextAnchor.MiddleLeft);
+            labelField = BuildLabelField();
             boxCaption = NewText(root, "BoxCaption", 13, TextAnchor.MiddleLeft);
             boxCaption.color = Accent;
             boxCaption.fontStyle = FontStyle.Bold;
@@ -243,13 +331,56 @@ namespace ThePitt.UI
             label.rectTransform.offsetMin = label.rectTransform.offsetMax = Vector2.zero;
         }
 
+        /// <summary>A text box for the player's name for the box: shown when looking at it.</summary>
+        private InputField BuildLabelField()
+        {
+            var rt = NewRect("Label", root);
+            var image = rt.gameObject.AddComponent<Image>();
+            image.color = new Color(0.04f, 0.04f, 0.04f, 1f);
+            var text = NewText(rt, "Text", 16, TextAnchor.MiddleLeft);
+            text.supportRichText = false;
+            Inset(text.rectTransform);
+            var placeholder = NewText(rt, "Placeholder", 16, TextAnchor.MiddleLeft);
+            placeholder.text = "Label this box…";
+            placeholder.fontStyle = FontStyle.Italic;
+            placeholder.color = new Color(0.55f, 0.52f, 0.48f);
+            Inset(placeholder.rectTransform);
+            var field = rt.gameObject.AddComponent<InputField>();
+            field.targetGraphic = image;
+            field.textComponent = text;
+            field.placeholder = placeholder;
+            field.characterLimit = 24;
+            field.lineType = InputField.LineType.SingleLine;
+            field.caretColor = Accent;
+            field.selectionColor = new Color(Accent.r, Accent.g, Accent.b, 0.35f);
+            field.onEndEdit.AddListener(value =>
+            {
+                if (box != null) box.SetLabel(value);
+            });
+            return field;
+        }
+
+        private static void Inset(RectTransform rt)
+        {
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.offsetMin = new Vector2(10f, 0f);
+            rt.offsetMax = new Vector2(-10f, 0f);
+        }
+
         /// <summary>Lays the panel out top to bottom around however many slots each side has.</summary>
         private void Resize()
         {
             const float margin = 28f;
             float width = Columns * Cell + (Columns - 1) * Spacing;
             float y = -14f;
-            Place(header.rectTransform, y, width, 34f); y -= 44f;
+            Place(header.rectTransform, y, width, 34f);
+            // The label box on the right of the header line.
+            var lr = (RectTransform)labelField.transform;
+            lr.anchorMin = lr.anchorMax = lr.pivot = new Vector2(0.5f, 1f);
+            lr.anchoredPosition = new Vector2(width / 2f - 150f, y - 2f);
+            lr.sizeDelta = new Vector2(300f, 30f);
+            y -= 44f;
             Place(boxCaption.rectTransform, y, width, 20f); y -= 26f;
             float boxHeight = GridHeight(box.Contents.SlotCount);
             Place(boxGrid, y, width, boxHeight); y -= boxHeight + 22f;
@@ -300,6 +431,10 @@ namespace ThePitt.UI
                 AddTrigger(trigger, EventTriggerType.PointerEnter, () => SetHover(side, index));
                 AddTrigger(trigger, EventTriggerType.PointerExit, () => { if (hoveredSide == side && hoveredIndex == index) SetHover(null, -1); });
                 AddTrigger(trigger, EventTriggerType.PointerClick, () => Transfer(side, index));
+                AddTrigger(trigger, EventTriggerType.BeginDrag, () => BeginDrag(side, index));
+                AddTrigger(trigger, EventTriggerType.Drag, MoveGhost);
+                AddTrigger(trigger, EventTriggerType.Drop, () => DropOn(side, index));
+                AddTrigger(trigger, EventTriggerType.EndDrag, EndDrag);
                 views.Add((background, icon, text));
             }
         }

@@ -10,10 +10,11 @@ using UnityEngine;
 namespace ThePitt.Production
 {
     /// <summary>
-    /// A station that crafts on the in-game clock, working through a queue one item at a time. Queuing
-    /// several takes all their ingredients up front and the same time per item as crafting them one by one.
-    /// Jobs keep running while the player is away; finished items pile up on the bench and can be collected
-    /// at any time, even while the rest of the queue is still being worked.
+    /// A station that crafts in real time (paused with the game), working through a queue one item at a time.
+    /// Queuing several takes all their ingredients up front and the same time per item as crafting them one by
+    /// one. Jobs keep running while the player is away; finished items pile up on the bench (the last one made
+    /// sits on it to see) and can be collected at any time, even while the rest of the queue is still being
+    /// worked. While it works, a ring floats over it showing what's being made and how far along it is.
     /// </summary>
     public class CraftingBench : MonoBehaviour, IInteractable, IPickupBlocker, ISaveState
     {
@@ -26,6 +27,12 @@ namespace ThePitt.Production
         [SerializeField, Min(1)] private int maxQueue = 50;
         [Tooltip("How fast this bench works: 1.5 is an upgraded station, taking two thirds of the time.")]
         [SerializeField, Min(0.1f)] private float speed = 1f;
+        [Tooltip("Where the last finished item sits until it's collected. Found by name (\"OutputSpot\") if empty.")]
+        [SerializeField] private Transform outputSpot;
+        [Tooltip("Where the progress ring floats. Found by name (\"StatusSpot\") if empty; otherwise over the top.")]
+        [SerializeField] private Transform statusSpot;
+        [Tooltip("The finished item's model, longest side in metres.")]
+        [SerializeField, Min(0.05f)] private float outputModelSize = 0.35f;
 
         private struct Job
         {
@@ -40,8 +47,12 @@ namespace ThePitt.Production
         private bool queuing;
 
         private readonly List<Job> queue = new();
-        private int minutesLeft;
+        private float secondsLeft;
         private readonly List<ItemStack> finished = new();
+        private ItemDefinition lastMade;
+        private ItemDefinition shownOutput;
+        private GameObject outputModel;
+        private UI.StationStatusUI status;
 
         public string BenchName => benchName;
         public CraftingStation Station => station;
@@ -56,54 +67,87 @@ namespace ThePitt.Production
         public int QueueSpace => Mathf.Max(0, maxQueue - queue.Count);
         public bool HasOutput => finished.Count > 0;
         public IReadOnlyList<ItemStack> Finished => finished;
-        public float Progress => Current == null || MinutesFor(Current) == 0 ? 0f
-            : Mathf.Clamp01(1f - minutesLeft / (float)MinutesFor(Current));
+        public float Progress => Current == null || SecondsFor(Current) <= 0f ? 0f
+            : Mathf.Clamp01(1f - secondsLeft / SecondsFor(Current));
         public float Speed => speed;
 
-        /// <summary>In-game minutes one of these takes here: quicker on an upgraded bench and with skill in the work.</summary>
-        public int MinutesFor(RecipeDefinition recipe) =>
-            recipe == null || recipe.CraftMinutes <= 0 ? 0
-                : Mathf.Max(1, Mathf.CeilToInt(recipe.CraftMinutes / (speed * Progression.Skills.SpeedMultiplier(recipe))));
-        /// <summary>In-game minutes until the whole queue is done.</summary>
-        public int MinutesToClear
+        /// <summary>Real seconds one of these takes here: quicker on an upgraded bench and with skill in the work.</summary>
+        public float SecondsFor(RecipeDefinition recipe) =>
+            recipe == null || recipe.CraftSeconds <= 0f ? 0f
+                : Mathf.Max(0.5f, recipe.CraftSeconds / (speed * Progression.Skills.SpeedMultiplier(recipe)));
+        /// <summary>Real seconds until the whole queue is done.</summary>
+        public float SecondsToClear
         {
             get
             {
-                int total = minutesLeft;
-                for (int i = 1; i < queue.Count; i++) total += MinutesFor(queue[i].recipe);
+                float total = secondsLeft;
+                for (int i = 1; i < queue.Count; i++) total += SecondsFor(queue[i].recipe);
                 return total;
             }
         }
 
+        /// <summary>"45 s", "2m 05s", "1h 10m".</summary>
+        public static string Duration(float seconds)
+        {
+            int s = Mathf.CeilToInt(seconds);
+            if (s < 60) return $"{s} s";
+            if (s < 3600) return $"{s / 60}m {s % 60:00}s";
+            return $"{s / 3600}h {s / 60 % 60:00}m";
+        }
+
+        /// <summary>Where crafting here takes ingredients from: the player's inventory, then storage in the same property.</summary>
+        public List<Inventory> Sources(Inventory player) => StorageBox.Sources(player, transform.position);
+
         /// <summary>Fired whenever a job is queued, advances or finishes, or output is collected.</summary>
         public event Action Changed;
 
-        private void OnEnable()
-        {
-            if (TimeManager.Instance != null) TimeManager.Instance.MinuteChanged += OnMinute;
-        }
-
         private void Start()
         {
-            OnDisable();
-            OnEnable();
             // Setting one up opens up its recipes.
             RecipeUnlocks.AddStation(station);
+            if (outputSpot == null) outputSpot = transform.Find("OutputSpot");
+            if (statusSpot == null) statusSpot = transform.Find("StatusSpot");
+            status = UI.StationStatusUI.Create(transform, statusSpot != null ? statusSpot.localPosition : AboveTop());
             UpdateIndicator();
         }
 
-        private void OnDisable()
+        /// <summary>Just over the station's top, in its own space.</summary>
+        private Vector3 AboveTop()
         {
-            if (TimeManager.Instance != null) TimeManager.Instance.MinuteChanged -= OnMinute;
+            var renderers = GetComponentsInChildren<Renderer>();
+            if (renderers.Length == 0) return Vector3.up * 2f;
+            var bounds = renderers[0].bounds;
+            foreach (var r in renderers) bounds.Encapsulate(r.bounds);
+            return transform.InverseTransformPoint(new Vector3(transform.position.x, bounds.max.y + 0.4f, transform.position.z));
         }
 
         private void Update()
         {
+            if (IsBusy)
+            {
+                secondsLeft -= Time.deltaTime;
+                if (secondsLeft <= 0f) FinishCurrent();
+                else if (Time.time >= nextProgressEvent)
+                {
+                    // The menu's queue line, a few times a second rather than every frame.
+                    nextProgressEvent = Time.time + 0.25f;
+                    Changed?.Invoke();
+                }
+            }
+            if (status != null)
+            {
+                status.SetVisible(IsBusy);
+                if (IsBusy) status.Set(Current.Output != null ? Current.Output.Icon : null, Progress, UI.StationStatusUI.DiscColour);
+                status.Tick();
+            }
+
             // The sound of work while a job runs: hammering, sizzling or bubbling depending on the station.
             if (!IsBusy || Time.time < nextWorkSound) return;
             nextWorkSound = Time.time + UnityEngine.Random.Range(1.1f, 2.3f);
             PlayWorkSound();
         }
+
+        private float nextProgressEvent;
 
         private void PlayWorkSound()
         {
@@ -118,19 +162,9 @@ namespace ThePitt.Production
             }
         }
 
-        private void OnMinute(int _)
-        {
-            if (!IsBusy) return;
-            if (--minutesLeft > 0)
-            {
-                Changed?.Invoke();
-                return;
-            }
-            FinishCurrent();
-        }
-
         /// <summary>
-        /// Takes the ingredients for up to <paramref name="count"/> items from the inventory and queues them
+        /// Takes the ingredients for up to <paramref name="count"/> items from the inventory (and storage in the
+        /// same property) and queues them
         /// behind whatever is already being made. Returns how many were queued (fewer if the ingredients or
         /// the queue run out).
         /// </summary>
@@ -138,23 +172,24 @@ namespace ThePitt.Production
         {
             if (recipe == null || recipe.Station != station || count <= 0) return 0;
             bool wasIdle = !IsBusy;
+            var sources = Sources(inventory);
             int queued = 0;
             while (queued < count && queue.Count < maxQueue)
             {
                 var taken = new List<ItemStack>();
-                if (!recipe.Consume(inventory, out var quality, taken)) break;
+                if (!recipe.Consume(sources, out var quality, taken)) break;
                 queue.Add(new Job { recipe = recipe, quality = quality, ingredients = taken });
                 queued++;
             }
             if (queued == 0) return 0;
             if (wasIdle)
             {
-                minutesLeft = MinutesFor(recipe);
+                secondsLeft = SecondsFor(recipe);
                 PlayWorkSound();
                 nextWorkSound = Time.time + 1.5f;
                 // Instant recipes don't wait for the clock.
                 queuing = true;
-                while (IsBusy && minutesLeft <= 0) FinishCurrent();
+                while (IsBusy && secondsLeft <= 0f) FinishCurrent();
                 queuing = false;
             }
             UpdateIndicator();
@@ -181,7 +216,7 @@ namespace ThePitt.Production
                 }
             }
             queue.Clear();
-            minutesLeft = 0;
+            secondsLeft = 0f;
             UpdateIndicator();
             Changed?.Invoke();
             return cancelled;
@@ -193,8 +228,10 @@ namespace ThePitt.Production
             queue.RemoveAt(0);
             AudioManager.Play(AudioManager.Library?.craftDone, transform.position + Vector3.up, 0.7f, 18f);
             AddFinished(job.recipe.Output, Progression.Skills.RollYield(job.recipe, job.recipe.OutputAmount), job.quality);
+            if (job.recipe.Output != null) lastMade = job.recipe.Output;
             Progression.Skills.Crafted(job.recipe);
-            minutesLeft = IsBusy ? MinutesFor(queue[0].recipe) : 0;
+            // Any time overshot carries into the next one.
+            secondsLeft = IsBusy ? secondsLeft + SecondsFor(queue[0].recipe) : 0f;
             UpdateIndicator();
             Changed?.Invoke();
             if (!IsBusy && !queuing) AnnounceDone();
@@ -240,7 +277,11 @@ namespace ThePitt.Production
                 if (s.quantity <= 0) finished.RemoveAt(i);
                 else finished[i] = s;
             }
-            if (total > 0) Changed?.Invoke();
+            if (total > 0)
+            {
+                UpdateIndicator();
+                Changed?.Invoke();
+            }
             return total;
         }
 
@@ -271,6 +312,9 @@ namespace ThePitt.Production
         private class SaveState
         {
             public List<JobSave> queue = new();
+            public float secondsLeft = -1f;
+            public string lastMade;
+            // From before craft times were in real seconds.
             public int minutesLeft;
             public List<StackSave> finished = new();
             // From before queues: a single job and a single finished stack.
@@ -283,7 +327,7 @@ namespace ThePitt.Production
 
         public string CaptureState()
         {
-            var save = new SaveState { minutesLeft = minutesLeft };
+            var save = new SaveState { secondsLeft = secondsLeft, lastMade = SaveRegistry.IdOf(lastMade) };
             foreach (var j in queue)
             {
                 var js = new JobSave { recipe = SaveRegistry.IdOf(j.recipe), quality = (int)j.quality };
@@ -315,7 +359,10 @@ namespace ThePitt.Production
             if (old != null && queue.Count == 0) queue.Add(new Job { recipe = old, quality = (ItemQuality)s.quality, ingredients = Refund(old, new JobSave { quality = s.quality }) });
             AddFinished(SaveRegistry.Lookup<ItemDefinition>(s.finishedItem), s.finishedQuantity, (ItemQuality)s.finishedQuality);
 
-            minutesLeft = IsBusy ? Mathf.Max(1, s.minutesLeft) : 0;
+            lastMade = SaveRegistry.Lookup<ItemDefinition>(s.lastMade);
+            // Older saves counted in-game minutes (0.625 s each).
+            float left = s.secondsLeft >= 0f ? s.secondsLeft : s.minutesLeft * 0.625f;
+            secondsLeft = IsBusy ? Mathf.Max(0.5f, left) : 0f;
             UpdateIndicator();
             Changed?.Invoke();
         }
@@ -342,6 +389,36 @@ namespace ThePitt.Production
         private void UpdateIndicator()
         {
             if (workingIndicator != null) workingIndicator.SetActive(IsBusy);
+            ShowOutput();
+        }
+
+        /// <summary>The last thing made sits on the bench while anything's waiting to be collected.</summary>
+        private void ShowOutput()
+        {
+            ItemDefinition show = null;
+            if (finished.Count > 0)
+            {
+                show = finished[finished.Count - 1].item;
+                foreach (var f in finished)
+                    if (f.item == lastMade) show = lastMade;
+            }
+            if (show == shownOutput && (show == null || outputModel != null)) return;
+            shownOutput = show;
+            if (outputModel != null) Destroy(outputModel);
+            outputModel = null;
+            if (show == null || show.WorldModel == null) return;
+
+            var spot = outputSpot != null ? outputSpot : transform;
+            outputModel = Instantiate(show.WorldModel, spot, false);
+            outputModel.name = "FinishedItem";
+            foreach (var c in outputModel.GetComponentsInChildren<Collider>()) Destroy(c);
+            // Models are baked centred with their longest side 1 unit long: scale it, then sit it on the spot.
+            var lossy = spot.lossyScale;
+            outputModel.transform.localScale = new Vector3(outputModelSize / Mathf.Max(0.0001f, lossy.x),
+                outputModelSize / Mathf.Max(0.0001f, lossy.y), outputModelSize / Mathf.Max(0.0001f, lossy.z));
+            var filter = outputModel.GetComponentInChildren<MeshFilter>();
+            float halfHeight = filter != null ? filter.sharedMesh.bounds.extents.y * outputModelSize : 0.05f;
+            outputModel.transform.position = spot.position + Vector3.up * halfHeight;
         }
 
         public bool CanPickUp(out string reason)
@@ -358,9 +435,9 @@ namespace ThePitt.Production
             return $"crafting {Current.DisplayName} {Progress:P0}{waiting}";
         }
 
+        // The ring over the bench shows the work, so the prompt is just what pressing does.
         public string GetPrompt(PlayerInteractor interactor)
         {
-            string working = IsBusy ? $" · {WorkStatus()}" : "";
             if (HasOutput)
             {
                 var first = finished[0];
@@ -368,10 +445,10 @@ namespace ThePitt.Production
                 if (first.item.HasQuality) amount += $" ({first.quality})";
                 string more = finished.Count > 1 ? $" +{finished.Count - 1} more" : "";
                 return CanCollectAny(interactor.Inventory)
-                    ? $"Collect {first.item.DisplayName}{amount}{more}{working}"
-                    : $"{first.item.DisplayName} ready · inventory full{working}";
+                    ? $"Collect {first.item.DisplayName}{amount}{more}"
+                    : $"{first.item.DisplayName} ready · inventory full";
             }
-            return $"Use {benchName}{working}";
+            return $"Use {benchName}";
         }
 
         public bool CanInteract(PlayerInteractor interactor)

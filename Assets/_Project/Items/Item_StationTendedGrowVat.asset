@@ -16,12 +16,13 @@ MonoBehaviour:
   description: A grow vat with a drip feed and reflectors. Crops grow 30% faster.
   category: 6
   icon: {fileID: 4302229886138189054, guid: efb83b6b51dc0d613b51c776dc175dd2, type: 3}
-  maxStack: 3
+  maxStack: 1
   baseValue: 70
   hasQuality: 0
   nutrition: 0
   hydration: 0
   healthEffect: 0
+  worldModel: {fileID: 0}
   placeablePrefab: {fileID: 6785500124349822428, guid: 0f9f9ed057d3bf5aab92fc978174030e, type: 3}
   utilityDraw: {x: 2, y: 3, z: 0}
   effectMinutes: 0

@@ -6,8 +6,9 @@ using UnityEngine.UI;
 namespace ThePitt.UI
 {
     /// <summary>
-    /// Day, time, scrip balance and debt status, on a card (styled like the unlock popups) in the bottom-left
-    /// of the player menu's Inventory tab, opposite the vitals. Builds the card itself; the old corner label is hidden.
+    /// Scrip balance and debt status, on a card (styled like the unlock popups) in the bottom-left of the
+    /// player menu's Inventory tab; and the day and time on a small card in the top-left of the HUD, which
+    /// stays up while the menu is open. Builds both cards itself; the old corner label is hidden.
     /// </summary>
     public class EconomyHUD : MonoBehaviour
     {
@@ -29,6 +30,7 @@ namespace ThePitt.UI
         {
             if (label != null) label.enabled = false;
             BuildCard();
+            BuildTimeCard();
             // Into the player menu, which lays itself out first (it runs earlier).
             var menu = FindAnyObjectByType<PlayerMenuUI>();
             if (menu != null) menu.HostScripCard(Card);
@@ -41,9 +43,7 @@ namespace ThePitt.UI
         private void OnInventoryOpen(bool open)
         {
             Card.gameObject.SetActive(open);
-            if (!open) return;
-            Redraw();
-            RedrawTime();
+            if (open) Redraw();
         }
 
         private void Start()
@@ -76,10 +76,10 @@ namespace ThePitt.UI
         private void OnDayChanged(int _) => Redraw();
         private void OnMinute(int _)
         {
-            if (Card.gameObject.activeSelf) RedrawTime();
+            RedrawTime();
         }
 
-        /// <summary>The day and time: the menu is the only place they show.</summary>
+        /// <summary>The day and time, on the top-left card.</summary>
         private void RedrawTime()
         {
             var clock = TimeManager.Instance;
@@ -139,29 +139,57 @@ namespace ThePitt.UI
             layout.childForceExpandHeight = false;
             go.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-            // The orange edge the unlock cards have.
+            AddAccent(Card);
+
+            var caption = CardText(Card, font, 14, Accent, FontStyle.Bold);
+            caption.text = "SCRIP & DEBT";
+            body = CardText(Card, font, 19, new Color(0.92f, 0.9f, 0.86f), FontStyle.Normal);
+            body.horizontalOverflow = HorizontalWrapMode.Wrap;
+        }
+
+        /// <summary>The day and time in the top-left corner of the HUD, sized to its text.</summary>
+        private void BuildTimeCard()
+        {
+            var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            var go = new GameObject("TimeCard", typeof(RectTransform), typeof(Image), typeof(HorizontalLayoutGroup), typeof(ContentSizeFitter));
+            var card = (RectTransform)go.transform;
+            card.SetParent(transform, false);
+            card.anchorMin = card.anchorMax = card.pivot = new Vector2(0f, 1f);
+            card.anchoredPosition = new Vector2(24f, -20f);
+            var image = go.GetComponent<Image>();
+            image.color = new Color(0.06f, 0.06f, 0.07f, 0.88f);
+            image.raycastTarget = false;
+            var layout = go.GetComponent<HorizontalLayoutGroup>();
+            layout.padding = new RectOffset(16, 14, 6, 6);
+            layout.childControlWidth = layout.childControlHeight = true;
+            layout.childForceExpandWidth = layout.childForceExpandHeight = false;
+            var fitter = go.GetComponent<ContentSizeFitter>();
+            fitter.horizontalFit = fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            AddAccent(card);
+            time = CardText(card, font, 20, new Color(0.96f, 0.94f, 0.9f), FontStyle.Bold);
+            time.horizontalOverflow = HorizontalWrapMode.Overflow;
+        }
+
+        /// <summary>The orange edge the unlock cards have.</summary>
+        private static void AddAccent(RectTransform card)
+        {
             var accent = new GameObject("Accent", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
             var ar = (RectTransform)accent.transform;
-            ar.SetParent(Card, false);
+            ar.SetParent(card, false);
             accent.GetComponent<LayoutElement>().ignoreLayout = true;
             ar.anchorMin = Vector2.zero;
             ar.anchorMax = new Vector2(0f, 1f);
             ar.pivot = new Vector2(0f, 0.5f);
             ar.sizeDelta = new Vector2(4f, 0f);
-            accent.GetComponent<Image>().color = Accent;
-
-            // Sized to match the vitals labels beside it in the menu.
-            time = CardText(font, 24, new Color(0.96f, 0.94f, 0.9f), FontStyle.Bold);
-            var caption = CardText(font, 14, Accent, FontStyle.Bold);
-            caption.text = "SCRIP & DEBT";
-            body = CardText(font, 19, new Color(0.92f, 0.9f, 0.86f), FontStyle.Normal);
-            body.horizontalOverflow = HorizontalWrapMode.Wrap;
+            var image = accent.GetComponent<Image>();
+            image.color = Accent;
+            image.raycastTarget = false;
         }
 
-        private Text CardText(Font font, int size, Color color, FontStyle style)
+        private static Text CardText(RectTransform card, Font font, int size, Color color, FontStyle style)
         {
             var go = new GameObject("Text", typeof(RectTransform), typeof(Text));
-            go.transform.SetParent(Card, false);
+            go.transform.SetParent(card, false);
             var t = go.GetComponent<Text>();
             t.font = font;
             t.fontSize = size;

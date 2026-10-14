@@ -16,12 +16,13 @@ MonoBehaviour:
   description: A forge plated in steel with a hotter fire. Works half again as fast.
   category: 6
   icon: {fileID: 1020530063138902798, guid: 241366c2e454695f39609a8310942731, type: 3}
-  maxStack: 3
+  maxStack: 1
   baseValue: 90
   hasQuality: 0
   nutrition: 0
   hydration: 0
   healthEffect: 0
+  worldModel: {fileID: 0}
   placeablePrefab: {fileID: 3683979387852356567, guid: a643f02cde4384cec9b7e69c57286fd1, type: 3}
   utilityDraw: {x: 0, y: 2, z: 2}
   effectMinutes: 0

@@ -16,7 +16,7 @@ MonoBehaviour:
   description: Pressed greens and meat in Corpo wrap. It tastes of nothing, which down here is a luxury.
   category: 0
   icon: {fileID: -2876508056827083437, guid: c0631666a02b15ed998e4e9101b6d4c3, type: 3}
-  maxStack: 10
+  maxStack: 20
   baseValue: 45
   hasQuality: 1
   nutrition: 55

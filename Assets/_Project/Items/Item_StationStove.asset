@@ -16,12 +16,13 @@ MonoBehaviour:
   description: Oil-drum stove with a grill and pot. Cooks meals, broth and boiled water.
   category: 6
   icon: {fileID: 8752434169602672556, guid: 8eb58a763468c5658aa83dacaee6df30, type: 3}
-  maxStack: 3
+  maxStack: 1
   baseValue: 35
   hasQuality: 0
   nutrition: 0
   hydration: 0
   healthEffect: 0
+  worldModel: {fileID: 0}
   placeablePrefab: {fileID: 5851957751234986113, guid: fb383f822bdb32febb82f818732b9892, type: 3}
   utilityDraw: {x: 1, y: 0, z: 2}
   effectMinutes: 0
@@ -37,3 +38,5 @@ MonoBehaviour:
   magazineSize: 1
   reloadSeconds: 1.5
   spread: 1.5
+  toolType: 0
+  gatherPower: 10

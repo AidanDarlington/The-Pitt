@@ -16,7 +16,7 @@ MonoBehaviour:
   description: Best not to ask. Raw, it fills you up and makes you sick. Sells, and goes into meals.
   category: 0
   icon: {fileID: 5497944035759278251, guid: 873fcf122c142e83d9791325bf968b9f, type: 3}
-  maxStack: 20
+  maxStack: 40
   baseValue: 6
   hasQuality: 1
   nutrition: 25

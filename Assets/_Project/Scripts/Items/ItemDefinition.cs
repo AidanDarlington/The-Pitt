@@ -11,6 +11,8 @@ namespace ThePitt.Items
         Seed,
         Misc,
         Structure,
+        /// <summary>Pickaxes and shovels.</summary>
+        Tool,
     }
 
     public enum WeaponType
@@ -113,6 +115,8 @@ namespace ThePitt.Items
         public bool HasLastingEffect => effectMinutes > 0;
         public WeaponType WeaponType => weaponType;
         public bool IsWeapon => weaponType != WeaponType.None;
+        /// <summary>Rounds for a firearm: filed under weapons, but stacks like a material.</summary>
+        public bool IsAmmo => category == ItemCategory.Weapon && !IsWeapon;
         public float Damage => damage;
         public float Range => range;
         public float AttackInterval => attackInterval;

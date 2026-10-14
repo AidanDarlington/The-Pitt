@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Item_Ash
   m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Items.ItemDefinition
   displayName: Ash
-  description: Pitcap, chem salts and something the Cultists burn at their rites. Makes you quick and fearless, then makes you pay.
+  description: Pitcap, chem salts and something the Triward Cult burn at their rites. Makes you quick and fearless, then makes you pay.
   category: 1
   icon: {fileID: -8564298816497089591, guid: e4fb162983bf9af4d8091e593e38d3ac, type: 3}
   maxStack: 20

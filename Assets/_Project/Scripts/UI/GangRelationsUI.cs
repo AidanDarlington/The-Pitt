@@ -28,8 +28,10 @@ namespace ThePitt.UI
         [SerializeField] private Inventory playerInventory;
         [SerializeField, Min(1)] private int tributeAmount = 100;
         [SerializeField, Min(1)] private int supplyItems = 5;
+        [Tooltip("One is suggested in the name box; the player can type anything.")]
         [SerializeField] private string[] gangNames =
             { "The Lowborn", "Gutter Saints", "The Debtors", "Pitt Rats", "The Undertow", "Ash Kings", "The Lamplighters", "Rust Orphans" };
+        [Tooltip("One is picked on the colour wheel to start with; the player can pick any colour.")]
         [SerializeField] private Color[] gangColours =
         {
             new(0.95f, 0.85f, 0.3f), new(0.3f, 0.95f, 0.85f), new(1f, 0.55f, 0.75f),
@@ -48,15 +50,17 @@ namespace ThePitt.UI
         private readonly List<Row> rows = new();
         private RectTransform rivalsTab, gangTab, foundView, runView;
         private Button rivalsTabButton, gangTabButton;
-        private Text status, foundText, nameLabel, gangHeader, gangCrew, gangNews, foundButtonLabel;
+        private Text status, foundText, gangHeader, gangCrew, gangNews, foundButtonLabel;
+        private InputField nameInput, renameInput;
+        private ColourWheel colourWheel;
         private Image colourSwatch;
+        private Color chosenColour;
         private Button foundButton, supplyButton;
         private readonly Button[] stanceButtons = new Button[3];
         private Font font;
         private RectTransform panel, confirm;
         private bool wasOpen, showingGang;
         private float statusUntil;
-        private int nameIndex, colourIndex;
 
         private static readonly Color PanelColour = new(0.08f, 0.075f, 0.07f, 0.94f);
         private static readonly Color RowColour = new(0.14f, 0.13f, 0.12f, 0.95f);
@@ -234,21 +238,35 @@ namespace ThePitt.UI
 
         private void Found()
         {
-            string refusal = FactionManager.Instance.FoundGang(gangNames[nameIndex], gangColours[colourIndex], wallet);
-            Say(refusal ?? $"{gangNames[nameIndex]} is open for business. Recruit civilians and junkies by talking to them.");
+            string name = nameInput.text.Trim();
+            string refusal = FactionManager.Instance.FoundGang(name, chosenColour, wallet);
+            Say(refusal ?? $"{name} is open for business. Recruit civilians and junkies by talking to them.");
         }
 
-        private void CycleName()
+        private void PickColour(Color colour)
         {
-            nameIndex = (nameIndex + 1) % gangNames.Length;
-            var fm = FactionManager.Instance;
-            if (fm.PlayerGang != null) fm.RenameGang(gangNames[nameIndex]);
-            Refresh();
+            chosenColour = colour;
+            colourSwatch.color = colour;
         }
 
-        private void CycleColour()
+        /// <summary>Swaps the gang's name for a text box holding it; Enter or clicking away keeps the new one.</summary>
+        private void StartRename()
         {
-            colourIndex = (colourIndex + 1) % gangColours.Length;
+            var gang = FactionManager.Instance.PlayerGang;
+            if (gang == null) return;
+            renameInput.text = gang.Name;
+            renameInput.gameObject.SetActive(true);
+            gangHeader.gameObject.SetActive(false);
+            renameInput.Select();
+            renameInput.ActivateInputField();
+        }
+
+        private void FinishRename(string name)
+        {
+            if (!renameInput.gameObject.activeSelf) return;
+            renameInput.gameObject.SetActive(false);
+            gangHeader.gameObject.SetActive(true);
+            if (!string.IsNullOrWhiteSpace(name)) FactionManager.Instance.RenameGang(name);
             Refresh();
         }
 
@@ -306,16 +324,16 @@ namespace ThePitt.UI
                 var recipe = def.SignatureRecipe;
                 if (recipe == null) row.recipe.text = "";
                 else if (fm.KnowsRecipe(f)) row.recipe.text = $"Recipe: <b>{recipe.DisplayName}</b>{(Columns ? "\n" : " ")}<color=#8FD07A>learned</color> · {StationName(recipe.Station)}";
-                else row.recipe.text = $"Recipe: <b>{recipe.DisplayName}</b>{(Columns ? "\n" : " ")}<color=#{ColorUtility.ToHtmlStringRGB(Muted)}>free at Friendly, or buy it</color>";
+                else row.recipe.text = $"Recipe: <b>{recipe.DisplayName}</b>{(Columns ? "\n" : " ")}<color=#{ColorUtility.ToHtmlStringRGB(Muted)}>for sale from +{fm.RecipeSaleStanding:0} standing</color>";
 
-                if (f.eliminated || !f.requestOpen) row.request.text = "<color=#7A7468>No request today</color>";
+                if (f.eliminated || !f.requestOpen || f.requestItem == null) row.request.text = "<color=#7A7468>No request today</color>";
                 else
                 {
-                    int have = playerInventory != null ? FactionManager.CountGoods(playerInventory, f.requestCategory) : 0;
-                    row.request.text = $"Wants <b>{f.requestCount} × {Plural(f.requestCategory)}</b> for {f.requestReward} scrip  " +
+                    int have = playerInventory != null ? playerInventory.Count(f.requestItem) : 0;
+                    row.request.text = $"Wants <b>{f.requestCount} × {f.requestItem.DisplayName}</b> for {f.requestReward} scrip  " +
                                        $"<color=#{(have >= f.requestCount ? "8FD07A" : "C05040")}>(you have {have})</color>";
                 }
-                row.deliver.gameObject.SetActive(!f.eliminated && f.requestOpen);
+                row.deliver.gameObject.SetActive(!f.eliminated && f.requestOpen && f.requestItem != null);
                 row.deliver.interactable = fm.CanFillRequest(f, playerInventory);
 
                 bool alive = !f.eliminated;
@@ -326,7 +344,7 @@ namespace ThePitt.UI
                 row.warLabel.text = f.atWar ? $"Buy peace {fm.PeacePrice(f)}" : "Declare war";
                 row.war.interactable = alive && (!f.atWar || (wallet != null && wallet.Money >= fm.PeacePrice(f)));
                 row.recipeButton.gameObject.SetActive(recipe != null && !fm.KnowsRecipe(f));
-                row.recipeButtonLabel.text = $"Buy recipe {def.RecipePrice}";
+                row.recipeButtonLabel.text = f.standing >= fm.RecipeSaleStanding ? $"Buy recipe {def.RecipePrice}" : $"Recipe at +{fm.RecipeSaleStanding:0}";
                 row.recipeButton.interactable = fm.CanBuyRecipe(f) && wallet != null && wallet.Money >= def.RecipePrice;
             }
         }
@@ -345,10 +363,9 @@ namespace ThePitt.UI
                     "Run your own crew. Your turf can only start from a property you own: it grows out from their doors.\n\n" +
                     (home != null ? $"<color=#8FD07A>✓</color> Run it from: {home}" : "<color=#C05040>✗ You need to own a property first.</color>") +
                     $"\n<color=#{ColorUtility.ToHtmlStringRGB(Muted)}>Every gang will be wary of you once you do.</color>";
-                nameLabel.text = gangNames[nameIndex];
-                colourSwatch.color = gangColours[colourIndex];
                 foundButtonLabel.text = $"Found gang · {fm.FoundingCost} scrip";
-                foundButton.interactable = home != null && wallet != null && wallet.Money >= fm.FoundingCost;
+                foundButton.interactable = home != null && wallet != null && wallet.Money >= fm.FoundingCost &&
+                                           !string.IsNullOrWhiteSpace(nameInput.text);
                 return;
             }
 
@@ -368,14 +385,6 @@ namespace ThePitt.UI
         }
 
         private static string Capitalise(string s) => string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s.Substring(1);
-
-        private static string Plural(ItemCategory c) => c switch
-        {
-            ItemCategory.Food => "food",
-            ItemCategory.Drug => "drugs",
-            ItemCategory.Weapon => "weapons",
-            _ => c.ToString().ToLowerInvariant(),
-        };
 
         private static Color RelationColour(Relation r) => r switch
         {
@@ -605,24 +614,28 @@ namespace ThePitt.UI
             Place(foundText.rectTransform, 0f, -6f, 420f, 150f);
 
             var nameRow = NewText(foundView, "NameCaption", "Name", 15, TextAnchor.MiddleLeft);
-            Place(nameRow.rectTransform, 0f, -170f, 420f, 26f);
-            float nx = -110f;
-            NewButton(foundView, ref nx, -170f, 230f, 26f, out nameLabel, CycleName);
-            float ax = 125f;
-            NewButton(foundView, ref ax, -170f, 85f, 26f, out var nextName, CycleName).name = "NextName";
-            nextName.text = "Next ▸";
+            Place(nameRow.rectTransform, 0f, -170f, 420f, 28f);
+            nameInput = NewInput(foundView, "NameInput", 50f, -170f, 320f, 28f, 15);
+            nameInput.text = gangNames.Length > 0 ? gangNames[Random.Range(0, gangNames.Length)] : "";
+            nameInput.onValueChanged.AddListener(_ => Refresh());
 
             var colourRow = NewText(foundView, "ColourCaption", "Colour", 15, TextAnchor.MiddleLeft);
-            Place(colourRow.rectTransform, 0f, -206f, 420f, 26f);
-            float cx = -110f;
-            var swatchButton = NewButton(foundView, ref cx, -206f, 230f, 26f, out _, CycleColour);
-            colourSwatch = swatchButton.GetComponent<Image>();
-            float bx = 125f;
-            NewButton(foundView, ref bx, -206f, 85f, 26f, out var nextColour, CycleColour);
-            nextColour.text = "Next ▸";
+            Place(colourRow.rectTransform, 0f, -210f, 420f, 26f);
+            var wheelRect = NewRect("ColourWheel", foundView);
+            Place(wheelRect, -50f, -210f, 120f, 120f);
+            wheelRect.gameObject.AddComponent<RawImage>();
+            colourWheel = wheelRect.gameObject.AddComponent<ColourWheel>();
+            colourWheel.Picked += PickColour;
+            var swatch = NewRect("Swatch", foundView);
+            Place(swatch, 115f, -257f, 190f, 26f);
+            colourSwatch = swatch.gameObject.AddComponent<Image>();
+            colourSwatch.raycastTarget = false;
+            chosenColour = gangColours.Length > 0 ? gangColours[Random.Range(0, gangColours.Length)] : Color.white;
+            PickColour(chosenColour);
+            colourWheel.Show(chosenColour);
 
             float fx = -150f;
-            foundButton = NewButton(foundView, ref fx, -256f, 300f, 34f, out foundButtonLabel, Found);
+            foundButton = NewButton(foundView, ref fx, -350f, 300f, 34f, out foundButtonLabel, Found);
             foundButtonLabel.fontSize = Scaled(15);
 
             // Once it's running.
@@ -630,8 +643,11 @@ namespace ThePitt.UI
             Stretch(runView, 0f, 0f);
             gangHeader = NewText(runView, "Header", "", 20, TextAnchor.UpperLeft);
             Place(gangHeader.rectTransform, 0f, -4f, 420f, 50f);
+            renameInput = NewInput(runView, "RenameInput", -35f, -4f, 350f, 28f, 18);
+            renameInput.onEndEdit.AddListener(FinishRename);
+            renameInput.gameObject.SetActive(false);
             float rx = 155f;
-            NewButton(runView, ref rx, -6f, 60f, 22f, out var rename, CycleName).name = "Rename";
+            NewButton(runView, ref rx, -6f, 60f, 22f, out var rename, StartRename).name = "Rename";
             rename.text = "Rename";
             gangCrew = NewText(runView, "Crew", "", 14, TextAnchor.UpperLeft);
             gangCrew.horizontalOverflow = HorizontalWrapMode.Wrap;
@@ -703,6 +719,32 @@ namespace ThePitt.UI
             t.raycastTarget = false;
             t.horizontalOverflow = HorizontalWrapMode.Overflow;
             return t;
+        }
+
+        /// <summary>A single-line text box, centred <paramref name="x"/> from the middle and <paramref name="y"/> down from the top.</summary>
+        private InputField NewInput(Transform parent, string name, float x, float y, float width, float height, int size)
+        {
+            var rt = NewRect(name, parent);
+            Place(rt, x, y, width, height);
+            var image = rt.gameObject.AddComponent<Image>();
+            image.color = new Color(0.05f, 0.05f, 0.05f, 1f);
+            var outline = rt.gameObject.AddComponent<Outline>();
+            outline.effectColor = ButtonColour;
+            var text = NewText(rt, "Text", "", size, TextAnchor.MiddleLeft);
+            text.supportRichText = false;
+            var tr = text.rectTransform;
+            tr.anchorMin = Vector2.zero;
+            tr.anchorMax = Vector2.one;
+            tr.offsetMin = new Vector2(8f, 0f) * scale;
+            tr.offsetMax = new Vector2(-8f, 0f) * scale;
+            var field = rt.gameObject.AddComponent<InputField>();
+            field.targetGraphic = image;
+            field.textComponent = text;
+            field.characterLimit = 28;
+            field.lineType = InputField.LineType.SingleLine;
+            field.caretColor = new Color(1f, 0.66f, 0.3f);
+            field.selectionColor = new Color(1f, 0.66f, 0.3f, 0.35f);
+            return field;
         }
 
         /// <summary>A button whose left edge is at <paramref name="left"/>; advances it past the button.</summary>

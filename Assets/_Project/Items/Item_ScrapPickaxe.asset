@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Items.ItemDefinition
   displayName: Scrap Pickaxe
   description: A pipe for a handle and a hammered lump of scrap for a head. Breaks up the heaps in the scrap pit; hit the sparks and they come apart faster.
-  category: 5
+  category: 7
   icon: {fileID: -7279666068447711873, guid: 5d03b02bff171fd9a91c23e6eaeee306, type: 3}
   maxStack: 1
   baseValue: 20

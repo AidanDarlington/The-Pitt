@@ -19,7 +19,12 @@ namespace ThePitt.World
         /// gets its own city back. That only works if the generator keeps the old behaviour available: put each
         /// change behind a check of <see cref="buildVersion"/> (e.g. <c>if (g.buildVersion >= 3)</c>).
         /// </summary>
-        public const int GeneratorVersion = 2;
+        /// <list type="bullet">
+        /// <item>3: no small alley runs alongside a bigger walkway or gang square with less than a lot between,
+        /// or opens onto a terrace stairway.</item>
+        /// <item>4: no piece of small alley the player can't walk into (sealed off, or only across a terrace wall).</item>
+        /// </list>
+        public const int GeneratorVersion = 4;
 
         /// <summary>The oldest version the generator can still build. Saves from before it can't be loaded.</summary>
         public const int OldestGeneratorVersion = 2;

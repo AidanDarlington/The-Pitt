@@ -16,7 +16,7 @@ MonoBehaviour:
   description: A length of rebar with a taped grip and a lump of welded scrap on the business end.
   category: 2
   icon: {fileID: -2345489115377448958, guid: c19f2bc81a07de1c29f5d522c087334a, type: 3}
-  maxStack: 5
+  maxStack: 1
   baseValue: 25
   hasQuality: 1
   nutrition: 0

@@ -16,7 +16,7 @@ MonoBehaviour:
   description: 'A single-shot pipe pistol: a barrel, a spring and a prayer. Enough to make a small-timer look dangerous.'
   category: 2
   icon: {fileID: -4754974432128270686, guid: 70f0c345c47b6c9d8896dd626b50c66b, type: 3}
-  maxStack: 5
+  maxStack: 1
   baseValue: 60
   hasQuality: 1
   nutrition: 0

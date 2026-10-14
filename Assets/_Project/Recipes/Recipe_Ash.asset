@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Recipe_Ash
   m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Production.RecipeDefinition
   displayName: Ash
-  description: The Cultists' rite, minus the chanting.
+  description: The Triward Cult's rite, minus the chanting.
   station: 1
   ingredients:
   - item: {fileID: 11400000, guid: b407a879552c862d6bd73d101eeb9e70, type: 2}
@@ -24,4 +24,6 @@ MonoBehaviour:
     amount: 1
   output: {fileID: 11400000, guid: 409f950036d0604bca60efc1202d12ce, type: 2}
   outputAmount: 2
-  craftMinutes: 60
+  craftSeconds: 40
+  craftMinutes: -1
+  exactIngredients: 0

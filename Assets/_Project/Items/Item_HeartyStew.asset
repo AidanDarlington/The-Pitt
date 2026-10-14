@@ -16,7 +16,7 @@ MonoBehaviour:
   description: Thick with meat and pitcap. Fills you up for hours, and buyers pay well for it.
   category: 0
   icon: {fileID: 688922786161479854, guid: f2a51f4b41d05c00296ab4133ce777ae, type: 3}
-  maxStack: 10
+  maxStack: 20
   baseValue: 70
   hasQuality: 1
   nutrition: 80

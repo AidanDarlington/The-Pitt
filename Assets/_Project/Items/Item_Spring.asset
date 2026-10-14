@@ -16,7 +16,7 @@ MonoBehaviour:
   description: A coiled spring. Every trigger and latch needs one.
   category: 3
   icon: {fileID: -94222995838452414, guid: 08fa07a3350fc7bdaa92fca77a312c24, type: 3}
-  maxStack: 30
+  maxStack: 20
   baseValue: 5
   hasQuality: 0
   nutrition: 0

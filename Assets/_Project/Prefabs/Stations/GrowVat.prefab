@@ -253,7 +253,40 @@ MonoBehaviour:
   level: 0.85
   lamp: {fileID: 1840264585140931674}
   bulb: {fileID: 46377905687726439}
-  onEmission: {r: 2, g: 1.1, b: 1.7, a: 2}
+  glow: {r: 2.4, g: 2.328, b: 2.2080002, a: 2.4}
+  onColour: {r: 1, g: 1, b: 1, a: 1}
+  offColour: {r: 0.16, g: 0.16, b: 0.17, a: 1}
+--- !u!1 &2450449148433007946
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 8284099376916496355}
+  m_Layer: 0
+  m_Name: StatusSpot
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &8284099376916496355
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2450449148433007946}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 2.8, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 2282941215531082473}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &3875688957701600380
 GameObject:
   m_ObjectHideFlags: 0
@@ -823,6 +856,7 @@ Transform:
   - {fileID: 6585342589230401455}
   - {fileID: 4544003937459233389}
   - {fileID: 1987005789638541019}
+  - {fileID: 8284099376916496355}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &3131170943720436805
@@ -842,7 +876,12 @@ MonoBehaviour:
   - {fileID: 11400000, guid: a9cb305f6575f9d87a4858a5567f839f, type: 2}
   waterItem: {fileID: 11400000, guid: c8138d31ee039714183cbbde7741ca67, type: 2}
   waterPerItem: 50
+  cleanWaterItem: {fileID: 11400000, guid: 3a555897398133e5f8955feb3c3179bd, type: 2}
+  cleanWaterBonus: 1.1
+  statusSpot: {fileID: 0}
   tankCapacity: 100
+  growthSpeed: 1
+  bonusYield: 0
   growLight: {fileID: 4686608409903325778}
   ambientDayLight: 0
   ambientNightLight: 0

@@ -14,9 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ThePitt.Items.ItemDefinition
   displayName: Dirty Water
   description: Runoff from the upper city, caught in a bottle. Drinkable if you're desperate. Plants don't mind.
-  category: 5
+  category: 0
   icon: {fileID: 1206138020370456053, guid: ea5e85735a357936889c63c87caaeb36, type: 3}
-  maxStack: 10
+  maxStack: 20
   baseValue: 1
   hasQuality: 0
   nutrition: 0

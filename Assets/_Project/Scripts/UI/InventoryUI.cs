@@ -65,7 +65,8 @@ namespace ThePitt.UI
             bool closePressed = Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame;
             // Don't open over another menu (e.g. trading) that has already taken control.
             bool canOpen = controller == null || controller.InputEnabled;
-            if (toggle.WasPressedThisFrame() && (IsOpen || canOpen)) SetOpen(!IsOpen);
+            // Typing an "i" into a text box in the menu shouldn't shut it.
+            if (toggle.WasPressedThisFrame() && (IsOpen || canOpen) && !TextEntry.Active) SetOpen(!IsOpen);
             else if (IsOpen && closePressed) SetOpen(false);
         }
 
