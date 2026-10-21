@@ -379,6 +379,11 @@ namespace ThePitt.UI
                 PlayerPrefs.SetInt(FullscreenKey, on ? 1 : 0);
                 Screen.fullScreen = on;
             });
+            Choice(page, "FRAME LIMIT", FrameLimit.Label(FrameLimit.Value), () =>
+            {
+                FrameLimit.Set(FrameLimit.Next());
+                return FrameLimit.Label(FrameLimit.Value);
+            });
             if (actions != null) MenuButton(page, "CONTROLS", null, ShowControls);
             MenuButton(page, "BACK", null, () =>
             {
@@ -478,6 +483,7 @@ namespace ThePitt.UI
             seedText = NewText(side, "", 18, Muted, FontStyle.Normal);
             seedText.gameObject.AddComponent<LayoutElement>().preferredHeight = 28f;
             rollButton = MenuButton(side, "GENERATE NEW WORLD", null, () => StartCoroutine(Roll()));
+            if (Debug.isDebugBuild) MenuButton(side, "DEV WORLD", null, () => StartCoroutine(Loading(SaveSystem.StartDevWorld)));
 
             var label = NewText(side, "CHARACTER NAME", 20, Ink, FontStyle.Bold);
             label.gameObject.AddComponent<LayoutElement>().preferredHeight = 44f;
@@ -834,6 +840,23 @@ namespace ThePitt.UI
                 state.text = on ? "ON" : "OFF";
                 changed(on);
             });
+        }
+
+        /// <summary>A row that steps to its next setting when clicked; <paramref name="next"/> returns the new label.</summary>
+        private void Choice(RectTransform parent, string label, string value, System.Func<string> next)
+        {
+            var row = NewRect(label, parent);
+            row.gameObject.AddComponent<LayoutElement>().preferredHeight = 44f;
+            var title = NewText(row, label, 20, Ink, FontStyle.Bold);
+            Fill(title.rectTransform);
+            var state = NewText(row, value, 20, Accent, FontStyle.Bold);
+            Fill(state.rectTransform);
+            state.alignment = TextAnchor.MiddleRight;
+            var image = row.gameObject.AddComponent<Image>();
+            image.color = Color.clear;
+            var button = row.gameObject.AddComponent<Button>();
+            button.targetGraphic = image;
+            button.onClick.AddListener(() => state.text = next());
         }
 
         private Text NewText(Transform parent, string text, int size, Color color, FontStyle style)

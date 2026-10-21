@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using ThePitt.Core;
 using ThePitt.Economy;
 using ThePitt.Factions;
@@ -10,8 +9,8 @@ using UnityEngine;
 namespace ThePitt.NPC
 {
     /// <summary>
-    /// An individual NPC who buys goods. Has their own cash and per-category demand,
-    /// both refreshed each in-game day.
+    /// An individual NPC who buys goods at fixed prices. Has their own cash, refreshed each in-game day,
+    /// so one buyer can't take everything the player carries.
     /// </summary>
     public class NpcBuyer : MonoBehaviour, IInteractable
     {
@@ -19,8 +18,6 @@ namespace ThePitt.NPC
         [SerializeField] private NpcBuyerProfile profile;
         [Tooltip("Gang members only. Leave empty to belong to whichever gang holds the ground they stand on.")]
         [SerializeField] private FactionDefinition faction;
-
-        private readonly Dictionary<ItemCategory, float> demand = new();
 
         public string NpcName => npcName;
         public NpcBuyerProfile Profile => profile;
@@ -62,10 +59,7 @@ namespace ThePitt.NPC
         {
             float variance = Random.Range(-profile.CashVariance, profile.CashVariance);
             Cash = Mathf.RoundToInt(profile.DailyCash * (1f + variance));
-            demand.Clear();
         }
-
-        private float DemandFor(ItemCategory category) => demand.TryGetValue(category, out var d) ? d : 1f;
 
         /// <summary>Price this NPC pays for one unit, or 0 if they won't buy it.</summary>
         public int OfferFor(ItemDefinition item, ItemQuality quality)
@@ -81,26 +75,25 @@ namespace ThePitt.NPC
                 // they want more: a gang member never outbids a junkie for drugs.
                 if (rank > 0) multiplier = Mathf.Min(multiplier, profile.MultiplierForRank(rank - 1));
             }
-            float price = item.ValueAt(quality) * multiplier * DemandFor(item.Category);
+            float price = item.ValueAt(quality) * multiplier;
             return Mathf.Max(1, Mathf.RoundToInt(price));
         }
 
-        /// <summary>Buys one unit from an inventory slot. Returns the price paid, or 0 if no sale.</summary>
-        public int BuyOne(Inventory inventory, int slot, PlayerWallet wallet)
+        /// <summary>
+        /// Buys <paramref name="count"/> of an item at one quality, all or nothing. Returns the scrip paid, or 0
+        /// if they won't buy it, can't afford the lot, or the player doesn't have that many.
+        /// </summary>
+        public int Buy(Inventory inventory, ItemDefinition item, ItemQuality quality, int count, PlayerWallet wallet)
         {
-            var stack = inventory.GetSlot(slot);
-            if (stack.IsEmpty) return 0;
-            int price = OfferFor(stack.item, stack.quality);
-            if (price <= 0 || price > Cash) return 0;
+            if (count <= 0 || inventory.Count(item, quality) < count) return 0;
+            int total = OfferFor(item, quality) * count;
+            if (total <= 0 || total > Cash) return 0;
 
-            inventory.RemoveAt(slot, 1);
-            Cash -= price;
-            wallet.Add(price);
-
-            var category = stack.item.Category;
-            demand[category] = Mathf.Max(profile.MinimumDemand, DemandFor(category) - profile.DemandDropPerUnit);
-            if (Faction is { } gang) FactionManager.Instance.RecordSupply(gang, category, price);
-            return price;
+            inventory.Remove(item, count, quality);
+            Cash -= total;
+            wallet.Add(total);
+            if (Faction is { } gang) FactionManager.Instance.RecordSupply(gang, item.Category, total);
+            return total;
         }
 
         /// <summary>Recruited into the player's gang: off to join the crew, no more trading.</summary>

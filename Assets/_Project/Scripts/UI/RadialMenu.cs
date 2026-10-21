@@ -157,7 +157,10 @@ namespace ThePitt.UI
             {
                 var (slice, icon, label) = views[i];
                 bool used = i < options.Count;
+                // The icon and name aren't under the slice: hide them too, or a bigger menu's leftovers show.
                 slice.gameObject.SetActive(used);
+                icon.gameObject.SetActive(used);
+                label.gameObject.SetActive(used);
                 if (!used) continue;
 
                 // Filled clockwise from the top: turn it back half a slice so slice i is centred on its direction.

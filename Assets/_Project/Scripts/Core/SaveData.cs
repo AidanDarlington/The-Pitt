@@ -53,6 +53,20 @@ namespace ThePitt.Core
         public List<BusinessSave> businesses;
         /// <summary>Experience in each skill. Null in older saves.</summary>
         public List<Progression.SkillSave> skills;
+        /// <summary>Stacks the player has dropped on the ground. Null in older saves.</summary>
+        public List<DroppedItemSave> dropped;
+    }
+
+    [Serializable]
+    public class DroppedItemSave
+    {
+        public string item;
+        public int quantity;
+        public int quality;
+        public Vector3 position;
+        public float yaw;
+        /// <summary>When it was dropped, in total in-game hours. Negative (missing) means "now".</summary>
+        public float droppedAt = -1f;
     }
 
     [Serializable]

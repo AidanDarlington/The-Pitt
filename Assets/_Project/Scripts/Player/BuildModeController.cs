@@ -8,7 +8,8 @@ namespace ThePitt.Player
 {
     /// <summary>
     /// Build mode (B): look at something you've placed, left click to move it, E to pick it back up.
-    /// B or Esc leaves. Normal interaction is paused while it's on.
+    /// B or Esc leaves. Normal interaction is paused while it's on. The hotbar still works for stations: holding
+    /// one, a click starts placing it instead of moving what's looked at.
     /// </summary>
     public class BuildModeController : MonoBehaviour
     {
@@ -16,6 +17,8 @@ namespace ThePitt.Player
         [SerializeField] private PlacementController placement;
         [SerializeField] private Inventory inventory;
         [SerializeField] private FirstPersonController controller;
+        [SerializeField] private Hotbar hotbar;
+        [SerializeField] private PlayerCombat combat;
         [SerializeField] private Transform viewPoint;
         [SerializeField] private Text hintLabel;
         [SerializeField, Min(1f)] private float reach = 6f;
@@ -35,6 +38,8 @@ namespace ThePitt.Player
             if (inventory == null) inventory = GetComponent<Inventory>();
             if (placement == null) placement = GetComponent<PlacementController>();
             if (controller == null) controller = GetComponent<FirstPersonController>();
+            if (hotbar == null) hotbar = GetComponent<Hotbar>();
+            if (combat == null) combat = GetComponent<PlayerCombat>();
             SetActive(false);
         }
 
@@ -43,6 +48,7 @@ namespace ThePitt.Player
             IsActive = on;
             target = null;
             if (hintLabel != null) hintLabel.enabled = on;
+            if (on && hotbar != null) hotbar.EnterBuildMode();
         }
 
         private void Update()
@@ -75,6 +81,15 @@ namespace ThePitt.Player
                 return;
             }
 
+            // A station in hand: the click is the hotbar's, to place it.
+            var held = combat != null ? combat.HeldUsable : null;
+            if (held != null && held.IsPlaceable)
+            {
+                target = null;
+                SetHint($"BUILD MODE   ·   <b>{held.DisplayName}</b>   ·   LMB place   ·   1-6 stations   ·   B to exit");
+                return;
+            }
+
             target = FindTarget();
             if (target == null)
             {
@@ -89,7 +104,9 @@ namespace ThePitt.Player
                 : "E pick up";
             SetHint($"BUILD MODE   ·   <b>{target.DisplayName}</b>   ·   LMB move   ·   {pick}   ·   B to exit");
 
-            if (move.WasPressedThisFrame() && target.Item != null && Cursor.lockState == CursorLockMode.Locked)
+            // The click that just put a structure down mustn't lift it straight back up.
+            bool justPlaced = placement.LastPlacedFrame == Time.frameCount;
+            if (move.WasPressedThisFrame() && !justPlaced && target.Item != null && Cursor.lockState == CursorLockMode.Locked)
                 placement.BeginMove(target.gameObject, target.Item);
             else if (pickUp.WasPressedThisFrame() && canPickUp && hasRoom)
             {

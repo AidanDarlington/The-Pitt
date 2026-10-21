@@ -134,6 +134,10 @@ MonoBehaviour:
   terraceHeights: {x: -9, y: 9}
   terraceStep: 1.5
   maxTerraceRise: 4.5
+  kerbWidth: 0.35
+  kerbHeight: 0.15
+  sidewalkWidth: 1.2
+  kerb: {fileID: 2100000, guid: 7276897b1cce76b49a576f4e83106f77, type: 2}
   gantryChance: 0.18
   underpassChance: 0.12
   streetPropChance: 0.3
@@ -176,7 +180,7 @@ MonoBehaviour:
   worldItemPrefab: {fileID: 2536344732759987877, guid: 4a303bb54d2b47892a186d7d787c23cd, type: 3}
   concrete: {fileID: 2100000, guid: 8adfc27cd2612c055bb3c884586be410, type: 2}
   concreteDark: {fileID: 2100000, guid: 593cff133d06b54afb566886a218c0fd, type: 2}
-  brick: {fileID: 2100000, guid: b4cc5f2d474c0376b91379d2bfa01634, type: 2}
+  brick: {fileID: 2100000, guid: 070c61f51d7a8f38a8fb5b80e7adc8ab, type: 2}
   wood: {fileID: 2100000, guid: 91c412d062880d75a81062f6d25a44fb, type: 2}
   metal: {fileID: 2100000, guid: 0dcae0bcfd6643ce8840564566bfe4be, type: 2}
   rust: {fileID: 2100000, guid: c3d0200fcd04da100af9afdf6658b09f, type: 2}

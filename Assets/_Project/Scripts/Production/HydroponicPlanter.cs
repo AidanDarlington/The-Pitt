@@ -257,7 +257,7 @@ namespace ThePitt.Production
                     // The ring over the vat shows the crop and its progress; the tank and any problems are spelt out.
                     string warning = water <= 0f ? " · DRY" : TooLit ? " · too much light" : lastSample < 0.5f ? " · poor light" : "";
                     string tank = $" · Water {water / tankCapacity:P0}";
-                    return (CanWater(interactor) ? "Add water" : $"{plant.DisplayName} growing") + tank + warning;
+                    return (RadialMenu.Instance != null ? $"Tend {plant.DisplayName}" : CanWater(interactor) ? "Add water" : $"{plant.DisplayName} growing") + tank + warning;
 
                 default:
                     return $"Harvest {plant.DisplayName} ({Quality})";
@@ -273,7 +273,7 @@ namespace ThePitt.Production
         public bool CanInteract(PlayerInteractor interactor) => state switch
         {
             State.Empty => RadialMenu.Instance != null,
-            State.Growing => CanWater(interactor),
+            State.Growing => RadialMenu.Instance != null || CanWater(interactor),
             _ => interactor.Inventory.SpaceFor(plant.Produce, Quality) > 0,
         };
 
@@ -287,7 +287,7 @@ namespace ThePitt.Production
                     return;
 
                 case State.Growing:
-                    WaterFromHand(interactor);
+                    OpenTendMenu(interactor);
                     break;
 
                 case State.Ready:
@@ -364,22 +364,37 @@ namespace ThePitt.Production
             }
         }
 
-        /// <summary>Watering a growing plant: straight in with the only kind there is, or a choice of both.</summary>
-        private void WaterFromHand(PlayerInteractor interactor)
+        /// <summary>Tending a growing plant: a choice of water, or pulling the plant up to free the vat.</summary>
+        private void OpenTendMenu(PlayerInteractor interactor)
         {
             var sources = Sources(interactor.Inventory);
-            var usable = new System.Collections.Generic.List<(ItemDefinition item, float amount)>();
-            foreach (var w in Waters())
-                if (CanWater(interactor, w.item)) usable.Add(w);
-            if (usable.Count == 0) return;
-            if (usable.Count == 1 || RadialMenu.Instance == null)
+            if (RadialMenu.Instance == null)
             {
-                AddWater(sources, usable[0].item, usable[0].amount);
+                foreach (var w in Waters())
+                    if (CanWater(interactor, w.item))
+                    {
+                        AddWater(sources, w.item, w.amount);
+                        return;
+                    }
                 return;
             }
             var options = new System.Collections.Generic.List<RadialOption>();
             AddWaterOptions(options, interactor, sources);
-            RadialMenu.Instance.Open("WATER", options, interactor);
+            var growing = plant;
+            options.Add(new RadialOption
+            {
+                label = $"Pull up {growing.DisplayName}",
+                detail = "The crop is lost; the water stays",
+                enabled = true,
+                chosen = () =>
+                {
+                    if (state != State.Growing || plant != growing) return;
+                    state = State.Empty;
+                    plant = null;
+                    UpdateVisual();
+                },
+            });
+            RadialMenu.Instance.Open("TEND", options, interactor);
         }
 
         private void AddWater(System.Collections.Generic.IReadOnlyList<Inventory> sources, ItemDefinition item, float amount)

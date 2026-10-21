@@ -105,7 +105,7 @@ namespace ThePitt.World
             if (onSpark)
             {
                 flashUntil = Time.time + 0.12f;
-                MoveSpark();
+                MoveSpark(nearby: true);
             }
             return onSpark;
         }
@@ -129,28 +129,39 @@ namespace ThePitt.World
         /// <summary>
         /// Puts the glint on a fresh spot of the surface, somewhere on its upper half, where it can be seen: the
         /// first thing a ray from outside hits has to be this node, and someone standing on that side (or in
-        /// front, for a node only reached from the front) has to have a clear view of it.
+        /// front, for a node only reached from the front) has to have a clear view of it. After a hit it only
+        /// jumps a short way from where it was, so it creeps round the side being worked rather than leaping
+        /// to the far side; now and then that walks it round a corner and the player has to follow.
         /// </summary>
-        private void MoveSpark()
+        private void MoveSpark(bool nearby = false)
         {
             if (spark == null) return;
             // Freshly built pieces aren't in physics until synced.
             Physics.SyncTransforms();
             var centre = transform.position + Vector3.up * centreHeight * transform.localScale.y;
             var previous = spark.position;
-            for (int attempt = 0; attempt < 32; attempt++)
+            var previousDir = previous - centre;
+            previousDir.y = 0f;
+            nearby &= previousDir.sqrMagnitude > 0.0001f;
+            // Nearby: the first tries stay close to the last spot; the rest fall back to anywhere.
+            int nearTries = nearby ? 24 : 0;
+            for (int attempt = 0; attempt < 32 + nearTries; attempt++)
             {
-                var dir = Random.onUnitSphere;
+                bool near = attempt < nearTries;
+                int tries = near ? attempt : attempt - nearTries;
+                var dir = near ? previousDir.normalized + Random.insideUnitSphere * 0.9f : Random.onUnitSphere;
                 if (viewFromFront && Vector3.Dot(dir, transform.forward) < 0f) dir = Vector3.Reflect(dir, transform.forward);
                 dir.y = Mathf.Abs(dir.y) * 0.8f + 0.25f;
                 var from = centre + dir.normalized * 3f;
                 if (!Physics.Raycast(from, centre - from, out var hit, 3.2f, ~0, QueryTriggerInteraction.Ignore)) continue;
                 if (!hit.collider.transform.IsChildOf(transform)) continue;
-                // Facing outward and up a little, and not right where it just was.
+                // Facing outward and up a little, and not right where it just was (nor far from it, when nearby).
                 if (hit.normal.y < -0.2f) continue;
-                if (attempt < 24 && Vector3.Distance(hit.point, previous) < 0.35f) continue;
+                float moved = Vector3.Distance(hit.point, previous);
+                if ((near || tries < 24) && moved < 0.35f) continue;
+                if (near && moved > 0.9f * Mathf.Max(0.5f, transform.localScale.x)) continue;
                 var point = hit.point + hit.normal * 0.05f;
-                if (attempt < 30 && !InView(point, hit.normal, dir)) continue;
+                if ((near || tries < 30) && !InView(point, hit.normal, dir)) continue;
                 spark.position = point;
                 return;
             }

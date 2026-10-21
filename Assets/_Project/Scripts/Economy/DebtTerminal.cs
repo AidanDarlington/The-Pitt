@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using ThePitt.Interaction;
 using UnityEngine;
 
@@ -35,9 +36,41 @@ namespace ThePitt.Economy
 
         public bool CanInteract(PlayerInteractor interactor) => NextPayment(interactor) > 0;
 
+        /// <summary>Asks first, on a radial: pay, or keep the scrip.</summary>
         public void Interact(PlayerInteractor interactor)
         {
-            DebtLedger.Instance.Pay(WalletOf(interactor), NextPayment(interactor));
+            var wallet = WalletOf(interactor);
+            int pay = NextPayment(interactor);
+            if (pay <= 0) return;
+            if (UI.RadialMenu.Instance == null)
+            {
+                DebtLedger.Instance.Pay(wallet, pay);
+                return;
+            }
+            var ledger = DebtLedger.Instance;
+            var options = new List<UI.RadialOption>
+            {
+                new()
+                {
+                    label = $"Pay {pay:N0}",
+                    detail = $"Leaves {wallet.Money - pay:N0} scrip · {ledger.Remaining - pay:N0} still owed",
+                    enabled = true,
+                    // Re-checked: the wallet or the debt may have changed while the menu was up.
+                    chosen = () =>
+                    {
+                        int now = Mathf.Min(pay, NextPayment(interactor));
+                        if (now > 0) DebtLedger.Instance.Pay(wallet, now);
+                    },
+                },
+                new()
+                {
+                    label = "Cancel",
+                    detail = "Keep your scrip",
+                    enabled = true,
+                    chosen = () => { },
+                },
+            };
+            UI.RadialMenu.Instance.Open("PAY THE WATCHERS", options, interactor);
         }
     }
 }

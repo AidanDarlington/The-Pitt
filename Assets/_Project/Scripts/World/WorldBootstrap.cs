@@ -14,7 +14,8 @@ namespace ThePitt.World
     /// menu asked for (<see cref="WorldRequest"/>), then loads the game scene (player, HUD, the game's systems)
     /// on top, so everything there starts with the city already standing. The bar follows the real work: the
     /// build's own progress, then the game scene's loading. A new character is put inside their own property,
-    /// facing its door, and given a first save.
+    /// facing its door, and given a first save. The dev world (<see cref="WorldRequest.IsDev"/>) is built instead of a
+    /// city when asked for, in the editor and development builds only.
     /// Opened with nothing requested it goes to the menu instead, unless <see cref="devQuickStart"/> is set, in
     /// which case it builds the greybox's own seed with no character (nothing saves).
     /// </summary>
@@ -40,10 +41,13 @@ namespace ThePitt.World
         [SerializeField, HideInInspector] private int seed;
         [SerializeField, HideInInspector] private int generatorVersion;
         [SerializeField, HideInInspector] private bool built;
+        [SerializeField, HideInInspector] private bool dev;
 
         private void OnEnable()
         {
-            if (built && !WorldRequest.Active) WorldRequest.Set(string.IsNullOrEmpty(character) ? null : character, seed, newGame: false, generatorVersion);
+            if (!built || WorldRequest.Active) return;
+            if (dev) WorldRequest.SetDev();
+            else WorldRequest.Set(string.IsNullOrEmpty(character) ? null : character, seed, newGame: false, generatorVersion);
         }
 
         private void Awake()
@@ -62,6 +66,7 @@ namespace ThePitt.World
             character = WorldRequest.Character;
             seed = WorldRequest.Seed;
             generatorVersion = WorldRequest.GeneratorVersion;
+            dev = WorldRequest.IsDev && UnityEngine.Debug.isDebugBuild;
             BuildScreen();
         }
 
@@ -75,7 +80,8 @@ namespace ThePitt.World
             if (SaveRegistry.Instance == null) SaveRegistry.Instance = greybox.itemRegistry;
             // A frame's worth of work at a time, then let the bar redraw.
             var frame = Stopwatch.StartNew();
-            foreach (float progress in PittGreyboxGenerator.BuildSteps(greybox, WorldRequest.Seed, WorldRequest.GeneratorVersion))
+            var steps = dev ? PittGreyboxGenerator.BuildDevWorldSteps(greybox) : PittGreyboxGenerator.BuildSteps(greybox, WorldRequest.Seed, WorldRequest.GeneratorVersion);
+            foreach (float progress in steps)
             {
                 SetBar(progress * BuildShare);
                 if (frame.ElapsedMilliseconds < 30) continue;

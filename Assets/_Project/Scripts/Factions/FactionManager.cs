@@ -106,8 +106,10 @@ namespace ThePitt.Factions
         [SerializeField, Range(0f, 100f)] private float truceOpinion = 40f;
         [Tooltip("Gangs that think this badly of each other or worse count as enemies: allying with one upsets the other.")]
         [SerializeField, Range(-100f, 0f)] private float enemyOpinion = -30f;
-        [Tooltip("Standing lost with a gang's enemies when the player allies with it (and gained when declaring war on it).")]
+        [Tooltip("Standing gained with a gang's enemies when the player declares war on it.")]
         [SerializeField, Min(0f)] private float enemyOfMyFriend = 10f;
+        [Tooltip("Standing lost with a gang's enemies when the player allies with it.")]
+        [SerializeField, Min(0f)] private float allianceFallout = 70f;
 
         [Header("Player Supply")]
         [Tooltip("Power a gang gains per scrip of goods bought from the player.")]
@@ -756,9 +758,21 @@ namespace ThePitt.Factions
             if (GameHours < f.hostileUntil) return "They haven't forgotten what you did. Not yet.";
             if (f.standing < f.definition.AllianceStanding)
                 return $"They want more respect first (standing {f.definition.AllianceStanding:0} needed).";
+            var ally = SwornEnemyAlly(f);
+            if (ally != null) return $"Not while you're allied with {The(ally.Name)}. They're sworn enemies.";
             f.allied = true;
-            fallout = Ripple(f, -enemyOfMyFriend);
+            fallout = Ripple(f, -allianceFallout);
             RelationsChanged?.Invoke();
+            return null;
+        }
+
+        /// <summary>A current ally that is <paramref name="f"/>'s sworn enemy, or whose sworn enemy is <paramref name="f"/>; null if none.</summary>
+        public FactionState SwornEnemyAlly(FactionState f)
+        {
+            if (f == null) return null;
+            var enemy = WorstEnemyOf(f);
+            foreach (var o in states)
+                if (o != f && o.allied && !o.eliminated && !o.IsPlayer && (o == enemy || WorstEnemyOf(o) == f)) return o;
             return null;
         }
 
@@ -824,7 +838,8 @@ namespace ThePitt.Factions
             return true;
         }
 
-        private void ChangeStanding(FactionState f, float delta)
+        /// <summary>Moves how a gang feels about the player (clamped to -100..100).</summary>
+        public void ChangeStanding(FactionState f, float delta)
         {
             f.standing = Mathf.Clamp(f.standing + delta, -100f, 100f);
             RelationsChanged?.Invoke();

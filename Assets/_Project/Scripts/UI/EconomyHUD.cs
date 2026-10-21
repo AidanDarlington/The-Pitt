@@ -6,9 +6,9 @@ using UnityEngine.UI;
 namespace ThePitt.UI
 {
     /// <summary>
-    /// Scrip balance and debt status, on a card (styled like the unlock popups) in the bottom-left of the
-    /// player menu's Inventory tab; and the day and time on a small card in the top-left of the HUD, which
-    /// stays up while the menu is open. Builds both cards itself; the old corner label is hidden.
+    /// Debt status, on a card (styled like the unlock popups) in the bottom-left of the player menu's
+    /// Inventory tab; and the day and time with the scrip balance under it on a small card in the top-left of
+    /// the HUD, which stays up while the menu is open. Builds both cards itself; the old corner label is hidden.
     /// </summary>
     public class EconomyHUD : MonoBehaviour
     {
@@ -21,7 +21,7 @@ namespace ThePitt.UI
 
         private DebtLedger ledger;
         private InventoryUI inventoryUI;
-        private Text body, time;
+        private Text body, time, scrip;
 
         /// <summary>The card, so other corner UI can make room for it.</summary>
         public RectTransform Card { get; private set; }
@@ -72,7 +72,11 @@ namespace ThePitt.UI
             }
         }
 
-        private void OnWalletChanged(int _) => Redraw();
+        private void OnWalletChanged(int _)
+        {
+            Redraw();
+            RedrawTime();
+        }
         private void OnDayChanged(int _) => Redraw();
         private void OnMinute(int _)
         {
@@ -85,16 +89,17 @@ namespace ThePitt.UI
             var clock = TimeManager.Instance;
             if (time == null || clock == null) return;
             time.text = $"Day {clock.Day}  ·  {clock.Hour:00}:{clock.Minute:00}";
+            if (scrip != null) scrip.text = $"{(wallet != null ? wallet.Money : 0):N0} scrip";
         }
 
         private void Redraw()
         {
             if (body == null) return;
-            string text = $"<size=26>{(wallet != null ? wallet.Money : 0):N0} scrip</size>";
+            string text = "";
 
             if (ledger != null)
             {
-                text += $"\n<color=#B8B2A8>Debt  {ledger.Remaining:N0}</color>";
+                text += $"<size=26>{ledger.Remaining:N0} owed</size>";
                 if (ledger.IsCleared)
                 {
                     text += "\n<color=#8FD07A>Debt cleared</color>";
@@ -142,16 +147,16 @@ namespace ThePitt.UI
             AddAccent(Card);
 
             var caption = CardText(Card, font, 14, Accent, FontStyle.Bold);
-            caption.text = "SCRIP & DEBT";
+            caption.text = "DEBT";
             body = CardText(Card, font, 19, new Color(0.92f, 0.9f, 0.86f), FontStyle.Normal);
             body.horizontalOverflow = HorizontalWrapMode.Wrap;
         }
 
-        /// <summary>The day and time in the top-left corner of the HUD, sized to its text.</summary>
+        /// <summary>The day and time, and the scrip under them, in the top-left corner of the HUD, sized to its text.</summary>
         private void BuildTimeCard()
         {
             var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            var go = new GameObject("TimeCard", typeof(RectTransform), typeof(Image), typeof(HorizontalLayoutGroup), typeof(ContentSizeFitter));
+            var go = new GameObject("TimeCard", typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter));
             var card = (RectTransform)go.transform;
             card.SetParent(transform, false);
             card.anchorMin = card.anchorMax = card.pivot = new Vector2(0f, 1f);
@@ -159,8 +164,9 @@ namespace ThePitt.UI
             var image = go.GetComponent<Image>();
             image.color = new Color(0.06f, 0.06f, 0.07f, 0.88f);
             image.raycastTarget = false;
-            var layout = go.GetComponent<HorizontalLayoutGroup>();
+            var layout = go.GetComponent<VerticalLayoutGroup>();
             layout.padding = new RectOffset(16, 14, 6, 6);
+            layout.spacing = 1f;
             layout.childControlWidth = layout.childControlHeight = true;
             layout.childForceExpandWidth = layout.childForceExpandHeight = false;
             var fitter = go.GetComponent<ContentSizeFitter>();
@@ -168,6 +174,8 @@ namespace ThePitt.UI
             AddAccent(card);
             time = CardText(card, font, 20, new Color(0.96f, 0.94f, 0.9f), FontStyle.Bold);
             time.horizontalOverflow = HorizontalWrapMode.Overflow;
+            scrip = CardText(card, font, 18, Accent, FontStyle.Normal);
+            scrip.horizontalOverflow = HorizontalWrapMode.Overflow;
         }
 
         /// <summary>The orange edge the unlock cards have.</summary>

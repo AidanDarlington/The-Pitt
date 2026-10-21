@@ -23,6 +23,11 @@ namespace ThePitt.Core
         public static bool IsNewGame { get; private set; }
         /// <summary>Whether anything asked for a world (otherwise the game scene was opened directly).</summary>
         public static bool Active { get; private set; }
+        /// <summary>
+        /// The dev world rather than a city from a seed: a small test map with an example of everything in the game
+        /// (see PittDevWorld). Development builds and the editor only. Nothing saves there.
+        /// </summary>
+        public static bool IsDev { get; private set; }
 
         // Statics survive between play sessions when domain reload is off in the editor.
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -33,6 +38,7 @@ namespace ThePitt.Core
             GeneratorVersion = World.PittGreybox.GeneratorVersion;
             IsNewGame = false;
             Active = false;
+            IsDev = false;
         }
 
         public static void Set(string character, int seed, bool newGame, int generatorVersion = World.PittGreybox.GeneratorVersion)
@@ -42,6 +48,14 @@ namespace ThePitt.Core
             GeneratorVersion = generatorVersion;
             IsNewGame = newGame;
             Active = true;
+            IsDev = false;
+        }
+
+        /// <summary>The dev world, with no character (so nothing saves).</summary>
+        public static void SetDev()
+        {
+            Set(null, 0, newGame: false);
+            IsDev = true;
         }
 
         /// <summary>The new character has been placed and saved; reloading from here is an ordinary load.</summary>

@@ -49,6 +49,13 @@ namespace ThePitt.UI
         private readonly List<GameObject> factionLabels = new();
         private readonly List<GameObject> propertyLabels = new();
         private RawImage territoryImage;
+        // Zoom: the map scales inside a clipping viewport where it used to sit; the scroll wheel zooms toward
+        // the cursor and dragging pans. Labels and the player arrow stay the same size on screen.
+        private const float MaxZoom = 5f, ZoomStep = 1.25f;
+        private RectTransform viewport;
+        private RectMask2D viewportMask;
+        private float zoom = 1f;
+        private bool dragging;
         private Texture2D territoryTexture;
         private bool territoryDirty = true;
 
@@ -65,6 +72,7 @@ namespace ThePitt.UI
             view = (View)Mathf.Clamp(PlayerPrefs.GetInt(ViewKey, 0), 0, 2);
             BuildTabs();
             MakeArrow();
+            BuildViewport();
         }
 
         private void Start()
@@ -90,7 +98,11 @@ namespace ThePitt.UI
             if (toggle.WasPressedThisFrame() && (IsOpen || canOpen)) SetOpen(!IsOpen);
             else if (IsOpen && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame) SetOpen(false);
 
-            if (IsOpen) UpdateMarker();
+            if (IsOpen)
+            {
+                UpdateMarker();
+                UpdateZoom();
+            }
         }
 
         public void SetOpen(bool open)
@@ -114,7 +126,82 @@ namespace ThePitt.UI
                 var turf = FactionManager.Instance != null && player != null ? FactionManager.Instance.OwnerAt(player.position) : null;
                 if (turf != null) headerLabel.text += $"  ·  {turf.Name.ToUpperInvariant()} TURF";
                 UpdateMarker();
+                // Zoomed in: open on the player.
+                dragging = false;
+                SetPan(-playerMarker.anchoredPosition * zoom);
+                ApplyZoom();
             }
+        }
+
+        // ---------------------------------------------------------------- zoom
+
+        /// <summary>Puts the map inside a viewport of its own size and place, which clips it once zoomed in.</summary>
+        private void BuildViewport()
+        {
+            var map = mapImage.rectTransform;
+            var go = new GameObject("MapViewport", typeof(RectTransform), typeof(RectMask2D));
+            viewport = (RectTransform)go.transform;
+            viewport.SetParent(map.parent, false);
+            viewport.SetSiblingIndex(map.GetSiblingIndex());
+            viewport.anchorMin = map.anchorMin;
+            viewport.anchorMax = map.anchorMax;
+            viewport.pivot = map.pivot;
+            viewport.anchoredPosition = map.anchoredPosition;
+            viewport.sizeDelta = map.sizeDelta;
+            viewportMask = go.GetComponent<RectMask2D>();
+            map.SetParent(viewport, false);
+            map.anchorMin = map.anchorMax = map.pivot = new Vector2(0.5f, 0.5f);
+            map.anchoredPosition = Vector2.zero;
+            // Catches the scroll and drag over the map.
+            mapImage.raycastTarget = true;
+        }
+
+        private void UpdateZoom()
+        {
+            var mouse = Mouse.current;
+            if (mouse == null || viewport == null) return;
+            var canvas = viewport.GetComponentInParent<Canvas>();
+            var cam = canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
+            var screen = mouse.position.ReadValue();
+            bool over = RectTransformUtility.RectangleContainsScreenPoint(viewport, screen, cam);
+
+            float scroll = mouse.scroll.ReadValue().y;
+            if (over && Mathf.Abs(scroll) > 0.01f)
+            {
+                float next = Mathf.Clamp(scroll > 0f ? zoom * ZoomStep : zoom / ZoomStep, 1f, MaxZoom);
+                if (!Mathf.Approximately(next, zoom))
+                {
+                    // Keep the point under the cursor where it is.
+                    RectTransformUtility.ScreenPointToLocalPointInRectangle(viewport, screen, cam, out var local);
+                    var onMap = (local - mapImage.rectTransform.anchoredPosition) / zoom;
+                    zoom = next;
+                    SetPan(local - onMap * zoom);
+                    ApplyZoom();
+                }
+            }
+
+            if (mouse.leftButton.wasPressedThisFrame) dragging = over && zoom > 1f;
+            if (!mouse.leftButton.isPressed) dragging = false;
+            if (dragging) SetPan(mapImage.rectTransform.anchoredPosition + mouse.delta.ReadValue() / canvas.scaleFactor);
+        }
+
+        /// <summary>Moves the map in its viewport, never so far that an edge comes away from the side.</summary>
+        private void SetPan(Vector2 pan)
+        {
+            var limit = viewport.rect.size * (zoom - 1f) / 2f;
+            mapImage.rectTransform.anchoredPosition = new Vector2(
+                Mathf.Clamp(pan.x, -limit.x, limit.x), Mathf.Clamp(pan.y, -limit.y, limit.y));
+        }
+
+        private void ApplyZoom()
+        {
+            mapImage.rectTransform.localScale = Vector3.one * zoom;
+            // At full size the Watchers' labels hang past the map's edge: only clip once zoomed.
+            viewportMask.enabled = zoom > 1.001f;
+            var counter = Vector3.one / zoom;
+            foreach (var text in labelLayer.GetComponentsInChildren<Text>(true)) text.rectTransform.localScale = counter;
+            playerMarker.localScale = counter;
+            SetPan(mapImage.rectTransform.anchoredPosition);
         }
 
         private Vector2 MapPosition(Vector2 world)
@@ -346,7 +433,7 @@ namespace ThePitt.UI
             sb.Append("<color=#806040>■</color>  Scrap pit\n");
             if (view != View.Factions) sb.Append("<color=#ECF2FF>■</color>  Watcher outposts\n");
             if (view != View.Map) sb.Append("───  District border\n");
-            sb.Append("\n<color=#8A8680>M / Esc to close</color>");
+            sb.Append("\n<color=#8A8680>Scroll to zoom · drag to pan\nM / Esc to close</color>");
             return sb.ToString();
         }
 
