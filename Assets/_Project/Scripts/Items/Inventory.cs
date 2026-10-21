@@ -210,6 +210,39 @@ namespace ThePitt.Items
             Changed?.Invoke();
         }
 
+        /// <summary>
+        /// Moves half of a stack (rounded down) into an empty slot, the first after it if there is one. False if
+        /// it's a single item or there's no empty slot.
+        /// </summary>
+        public bool Split(int index) => index >= 0 && index < Slots.Length && Split(index, Slots[index].quantity / 2);
+
+        /// <summary>Moves <paramref name="amount"/> of a stack into the next empty slot; at least one stays behind.</summary>
+        public bool Split(int index, int amount)
+        {
+            if (index < 0 || index >= Slots.Length || Slots[index].IsEmpty || amount < 1 || amount >= Slots[index].quantity) return false;
+            int empty = -1;
+            for (int i = 1; i < Slots.Length && empty < 0; i++)
+            {
+                int j = (index + i) % Slots.Length;
+                if (Slots[j].IsEmpty) empty = j;
+            }
+            if (empty < 0) return false;
+            var stack = Slots[index];
+            stack.quantity -= amount;
+            Slots[index] = stack;
+            Slots[empty] = new ItemStack(stack.item, amount, stack.quality);
+            Changed?.Invoke();
+            return true;
+        }
+
+        /// <summary>Whether any slot is empty.</summary>
+        public bool HasEmptySlot()
+        {
+            foreach (var s in Slots)
+                if (s.IsEmpty) return true;
+            return false;
+        }
+
         /// <summary>Replaces every slot (loading a save). Extra stacks beyond the slot count are dropped.</summary>
         public void SetAll(System.Collections.Generic.IList<ItemStack> stacks)
         {

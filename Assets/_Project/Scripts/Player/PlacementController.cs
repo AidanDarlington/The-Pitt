@@ -60,6 +60,8 @@ namespace ThePitt.Player
         public bool IsMoving => moving != null;
         /// <summary>Frame on which placement was last cancelled, so Esc isn't handled twice.</summary>
         public int LastCancelFrame { get; private set; } = -1;
+        /// <summary>Frame on which something was last put down, so the same click doesn't also pick it up again.</summary>
+        public int LastPlacedFrame { get; private set; } = -1;
 
         /// <summary>Fired with the placed object.</summary>
         public event Action<GameObject> Placed;
@@ -264,6 +266,7 @@ namespace ThePitt.Player
 
         private void Place()
         {
+            LastPlacedFrame = Time.frameCount;
             if (moving != null)
             {
                 var target = moving;

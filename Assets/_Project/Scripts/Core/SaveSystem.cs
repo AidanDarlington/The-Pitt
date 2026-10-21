@@ -195,6 +195,17 @@ namespace ThePitt.Core
             SceneManager.LoadScene(WorldRequest.WorldScene);
         }
 
+        /// <summary>The dev world (development builds and the editor only): no character, nothing saves.</summary>
+        public static void StartDevWorld()
+        {
+            if (!Debug.isDebugBuild) return;
+            pending = null;
+            WorldRequest.SetDev();
+            Time.timeScale = 1f;
+            Suspended = false;
+            SceneManager.LoadScene(WorldRequest.WorldScene);
+        }
+
         /// <summary>One save file: whose, which slot, what's in it, and when it was written.</summary>
         public readonly struct SaveInfo
         {
@@ -374,6 +385,18 @@ namespace ThePitt.Core
 
             var pit = FindFirstObjectByType<ScrapPitSpawner>();
             if (pit != null) data.scrapPit = pit.Capture();
+            data.dropped = new List<DroppedItemSave>();
+            foreach (var d in WorldItem.Dropped)
+                if (d != null && d.Item != null && d.Quantity > 0)
+                    data.dropped.Add(new DroppedItemSave
+                    {
+                        item = SaveRegistry.IdOf(d.Item),
+                        quantity = d.Quantity,
+                        quality = (int)d.Quality,
+                        position = d.transform.position,
+                        yaw = d.transform.eulerAngles.y,
+                        droppedAt = d.DroppedAt,
+                    });
             var corpses = FindFirstObjectByType<CorpsePileSpawner>();
             if (corpses != null) data.corpsePiles = corpses.Capture();
             if (Properties.WatcherRaids.Instance != null) data.raids = Properties.WatcherRaids.Instance.Capture();
@@ -490,6 +513,12 @@ namespace ThePitt.Core
 
             var pit = FindFirstObjectByType<ScrapPitSpawner>();
             if (pit != null && data.scrapPit != null) pit.Restore(data.scrapPit);
+            foreach (var d in WorldItem.Dropped.ToArray())
+                if (d != null) Destroy(d.gameObject);
+            WorldItem.Dropped.Clear();
+            if (data.dropped != null)
+                foreach (var d in data.dropped)
+                    WorldItem.Drop(SaveRegistry.Lookup<ItemDefinition>(d.item), d.quantity, (ItemQuality)d.quality, d.position, d.yaw, d.droppedAt);
             var corpses = FindFirstObjectByType<CorpsePileSpawner>();
             if (corpses != null) corpses.Restore(data.corpsePiles);
             if (Properties.WatcherRaids.Instance != null) Properties.WatcherRaids.Instance.Restore(data.raids ?? new WatcherRaidsSave());

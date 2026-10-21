@@ -25,8 +25,22 @@ namespace ThePitt.World
         /// <item>4: no piece of small alley the player can't walk into (sealed off, or only across a terrace wall).</item>
         /// <item>5: alleys over a street, or into the pit or a square, are dropped rather than built on; fence gaps fit the player; clutter that
         /// leaves an alley too tight to pass is cleared; properties are chosen last, from doors the player can reach.</item>
+        /// <item>6: concrete kerbs along the foot of buildings facing streets (not the old random kerb down one side of a
+        /// thoroughfare), small alleys floored at kerb height, and doors, trash and fences standing on them.</item>
+        /// <item>7: lots and small alleys running into open ground (gang and sump squares, Watcher landings, the pit rim
+        /// and ramp) are cut back to its edge instead of being left out, so buildings wall the open ground in.</item>
+        /// <item>8: a small alley carrying on from another (end to end, or across an alley crossing it) lines up with it
+        /// exactly, or isn't made: no staggered jogs.</item>
+        /// <item>9: buildings along thoroughfares get a sidewalk (<see cref="sidewalkWidth"/>) rather than a kerb; wall pipes
+        /// are thinner and half sunk into the wall.</item>
+        /// <item>10: kerbs and sidewalks beside terrace stairs climb them, ramping up off the street's kerb and onto the terrace's.</item>
+        /// <item>11: terrace stairs are steepened to stay between the buildings either side rather than running on past them;
+        /// one that still can't fit gets a kerb up its open edge.</item>
+        /// <item>12: a terrace stair that can't fit between buildings isn't built (unless its terrace has no other), so none
+        /// stands out in the middle of a street.</item>
+        /// <item>13: a stair kerb at the corner of the building beside a flight's foot carries on round to meet the kerb along its front.</item>
         /// </list>
-        public const int GeneratorVersion = 5;
+        public const int GeneratorVersion = 13;
 
         /// <summary>The oldest version the generator can still build. Saves from before it can't be loaded.</summary>
         public const int OldestGeneratorVersion = 2;
@@ -243,6 +257,16 @@ namespace ThePitt.World
         [Tooltip("Most a terrace may stand above or below the one next to it, so the stairs between fit in the street.")]
         [Min(1f)] public float maxTerraceRise = 4.5f;
 
+        [Header("Kerbs")]
+        [Tooltip("How far the concrete kerb along the foot of each building reaches out into the street.")]
+        [Min(0.1f)] public float kerbWidth = 0.35f;
+        [Tooltip("Height of the kerb above the street. Small alleys are floored at this height all through.")]
+        [Range(0.05f, 0.3f)] public float kerbHeight = 0.15f;
+        [Tooltip("Width of the kerb along buildings facing a thoroughfare: a sidewalk.")]
+        [Min(0.1f)] public float sidewalkWidth = 1.2f;
+        [Tooltip("Kerbs and small alley floors. Empty uses Concrete Dark.")]
+        public Material kerb;
+
         [Header("Street Structures")]
         [Tooltip("Steel portal frames spanning alleys, with hanging lights.")]
         [Range(0f, 1f)] public float gantryChance = 0.18f;
@@ -323,6 +347,14 @@ namespace ThePitt.World
         [Tooltip("The same, as a position on the ground, and the way to face (toward the property's door).")]
         public Vector3 startPosition;
         public float startYaw;
+
+        /// <summary>
+        /// The dev world's NPC line-up: when set, nobody walks the streets or stands in the gang squares; instead one of
+        /// each kind (and a dealer) stands still in a row along +x from here, facing <see cref="npcLineupFacing"/>.
+        /// </summary>
+        [System.NonSerialized] public bool npcLineup;
+        [System.NonSerialized] public Vector2 npcLineupStart;
+        [System.NonSerialized] public Vector2 npcLineupFacing;
 
         /// <summary>
         /// The city in play. It lives in the World scene and the game's systems in another, so they find it through

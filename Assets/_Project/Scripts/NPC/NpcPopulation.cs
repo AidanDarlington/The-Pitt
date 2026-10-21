@@ -134,6 +134,12 @@ namespace ThePitt.NPC
             if (!NavMesh.SamplePosition(new Vector3(center.x, greybox.HeightAt(center) + 0.5f, center.y), out var hubHit, 5f, NavMesh.AllAreas)) return;
             hub = hubHit.position;
             populated = true;
+            if (greybox.npcLineup)
+            {
+                PopulateLineup();
+                RefreshGuards();
+                return;
+            }
             FindConnectedDoors();
             if (populateSquares) PopulateSquares();
             RefreshGuards();
@@ -166,6 +172,7 @@ namespace ThePitt.NPC
                 FirstPopulate();
                 return;
             }
+            if (greybox.npcLineup) return;
             spawnTimer -= Time.deltaTime;
             if (spawnTimer > 0f) return;
             spawnTimer = spawnInterval;
@@ -359,11 +366,31 @@ namespace ThePitt.NPC
             RecolourSquareGangs();
         }
 
+        /// <summary>The dev world's line-up: one of each kind and a dealer, standing still side by side.</summary>
+        private void PopulateLineup()
+        {
+            squareSlots.Clear();
+            var crew = new List<NpcKind>(kinds);
+            if (dealer?.profile != null) crew.Add(dealer);
+            var facing = new Vector3(greybox.npcLineupFacing.x, 0f, greybox.npcLineupFacing.y);
+            for (int k = 0; k < crew.Count; k++)
+            {
+                var p2 = greybox.npcLineupStart + Vector2.right * k * 2f;
+                var position = new Vector3(p2.x, greybox.HeightAt(p2), p2.y);
+                if (NavMesh.SamplePosition(position + Vector3.up * 0.5f, out var hit, 1.5f, NavMesh.AllAreas)) position = hit.position;
+                var slot = new SquareSlot { kind = crew[k], position = position, rotation = Quaternion.LookRotation(facing) };
+                squareSlots.Add(slot);
+                FillSlot(slot);
+            }
+            RecolourSquareGangs();
+        }
+
         private void FillSlot(SquareSlot slot)
         {
             // A square's gang member works for the gang whose district it's in (or, in unclaimed districts,
-            // follows whoever holds the ground).
+            // follows whoever holds the ground). The dev line-up's, standing on no gang's turf, joins any gang.
             var gang = slot.kind.profile.NpcType == NpcType.GangMember ? HomeGangAt(slot.position) : null;
+            if (gang == null && greybox.npcLineup && slot.kind.profile.NpcType == NpcType.GangMember) gang = NextGang();
             var npc = Create(slot.kind, slot.position, squaresRoot, gang);
             npc.transform.rotation = slot.rotation;
             npc.GetComponent<NavMeshAgent>().enabled = false;

@@ -21,10 +21,12 @@ namespace ThePitt.World.Generation
     /// look at a seed. Everything it makes lives in memory; the materials it uses are assets set up in the editor
     /// (PittWorldAssets) and listed on the <see cref="PittGreybox"/>. The same seed always builds the same city.
     /// </summary>
-    public static class PittGreyboxGenerator
+    public static partial class PittGreyboxGenerator
     {
         private const string GeneratedName = "Generated";
         private const float StepHeight = 0.25f;
+        /// <summary>The shallowest tread a terrace stair is steepened to.</summary>
+        private const float MinTread = 0.26f;
 
         private struct Segment
         {
@@ -93,7 +95,14 @@ namespace ThePitt.World.Generation
         private static List<Plan> plans;
         private static List<Rect> catwalkZones;
         private static List<Rect> stairZones = new();
+        /// <summary>
+        /// The terrace stairs: each flight's rect (without its top landing), the way up, its run, and its flights as
+        /// distances up from the foot with the heights they climb between. The kerbs beside them climb them (version 10).
+        /// </summary>
+        private static List<(Rect stair, Vector2 up, float run, List<(float from, float to, float bottom, float top)> flights)> stairFlights = new();
         private static RectIndex streetIndex, alleyIndex, walkIndex;
+        /// <summary>The kerbs along building faces, once built (version 6).</summary>
+        private static RectIndex kerbIndex;
         private static Dictionary<string, Material> glowCache;
 
         public static void Clear(PittGreybox greybox)
@@ -155,7 +164,7 @@ namespace ThePitt.World.Generation
             {
                 ("terrain", BuildTerrain, 300f), ("pillar", BuildPillar, 6f), ("buildings", BuildBuildings, 57f),
                 ("properties", BuildProperties, 20f), ("outposts", BuildWatcherOutposts, 5f), ("heights", BuildHeights, 35f),
-                ("underground", BuildUnderground, 5f), ("catwalks", BuildCatwalks, 20f), ("underpasses", BuildUnderpasses, 3f),
+                ("kerbs", BuildKerbs, 15f), ("underground", BuildUnderground, 5f), ("catwalks", BuildCatwalks, 20f), ("underpasses", BuildUnderpasses, 3f),
                 ("details", BuildDetails, 105f), ("doorways", BuildDoorways, 45f), ("signage", BuildSignage, 19f),
                 ("overhead", BuildOverhead, 11f), ("fences", BuildFences, 14f), ("gantries", BuildGantries, 17f),
                 ("props", BuildStreetProps, 5f), ("trash", BuildTrash, 24f), ("pit", BuildScrapPit, 8f),
@@ -246,6 +255,7 @@ namespace ThePitt.World.Generation
             g.buildVersion = version;
             glowCache = new Dictionary<string, Material>();
             planIndex = null;
+            kerbIndex = null;
             rng = new System.Random(seed);
         }
 
@@ -1004,6 +1014,7 @@ namespace ThePitt.World.Generation
         private static void PlanLots()
         {
             alleys = new List<Rect>();
+            alleyRuns = new List<(Rect rect, bool alongZ)>();
             plans = new List<Plan>();
             var lots = new List<Rect>();
             int n = xs.Length - 1;
@@ -1057,10 +1068,13 @@ namespace ThePitt.World.Generation
             }
             if (Since(5))
             {
-                DropAlleysIntoOpenGround();
+                // From version 7 cut back to the open ground's edge rather than dropped.
+                if (Since(7)) CutAlleysAtOpenGround();
+                else DropAlleysIntoOpenGround();
                 FillAlleysAlongTerraceEdges(lots);
             }
             var pits = FillAlleyPits();
+            if (Since(8)) pits.AddRange(FillNarrowedAlleys());
             if (Since(4)) pits.AddRange(FillUnreachableAlleys());
             foreach (var a in alleys)
             {
@@ -1068,14 +1082,52 @@ namespace ThePitt.World.Generation
                 walkIndex.Add(a);
             }
 
+            // Up to version 6 a lot touching open ground was left out whole, leaving open ground beyond the square (or
+            // rim, or landing) with no wall along its edge. From version 7 it's cut back to the edge and built.
+            var openGround = Since(7) ? OpenRects() : null;
+            var pieces = new List<Rect>();
+            var slivers = new List<Rect>();
             for (int i = 0; i < lots.Count; i++)
             {
-                var lot = lots[i];
-                if (lot.width < 1.2f || lot.height < 1.2f || TouchesOpen(lot)) continue;
-                GroundRange(lot, out float min, out float max);
-                float height = Chance(g.towerChance) ? R(g.towerHeight) : R(g.buildingHeight);
-                plans.Add(new Plan { footprint = lot, groundMin = min, ground = max, top = max + height, filler = i >= gridLots });
+                pieces.Clear();
+                if (Since(7)) CutOpen(lots[i], openGround, pieces, 0.05f);
+                else if (lots[i].width >= 1.2f && lots[i].height >= 1.2f && !TouchesOpen(lots[i])) pieces.Add(lots[i]);
+                foreach (var lot in pieces)
+                {
+                    if (lot.width < 1.2f || lot.height < 1.2f)
+                    {
+                        // Too thin to stand alone: built onto the building beside it below.
+                        slivers.Add(lot);
+                        continue;
+                    }
+                    GroundRange(lot, out float min, out float max);
+                    float height = Chance(g.towerChance) ? R(g.towerHeight) : R(g.buildingHeight);
+                    plans.Add(new Plan { footprint = lot, groundMin = min, ground = max, top = max + height, filler = i >= gridLots });
+                }
             }
+            // From version 7, a strip of cut lot too thin for a building of its own (between the edge of the open
+            // ground and the next lot) takes on the building it shares the longest wall with, so the wall along the
+            // open ground runs unbroken. Uses no randomness.
+            int built = plans.Count;
+            foreach (var sliver in slivers)
+            {
+                var touch = Grow(sliver, 0.05f);
+                Plan host = null;
+                float best = 0f;
+                for (int j = 0; j < built; j++)
+                {
+                    var o = plans[j].footprint;
+                    if (!touch.Overlaps(o)) continue;
+                    float shared = Mathf.Max(Mathf.Min(touch.xMax, o.xMax) - Mathf.Max(touch.xMin, o.xMin), Mathf.Min(touch.yMax, o.yMax) - Mathf.Max(touch.yMin, o.yMin));
+                    if (shared <= best) continue;
+                    best = shared;
+                    host = plans[j];
+                }
+                if (host == null) continue;
+                GroundRange(sliver, out float min, out float max);
+                plans.Add(new Plan { footprint = sliver, groundMin = min, ground = max, top = host.top, filler = true });
+            }
+
             // Filled-in stretches of alley, however small: a building's worth of solid where the hole was.
             foreach (var pit in pits)
             {
@@ -1270,6 +1322,122 @@ namespace ThePitt.World.Generation
                 }
                 return false;
             });
+        }
+
+        /// <summary>
+        /// From version 7, small alleys running into open ground are cut back to its edge, so the stretch between the
+        /// buildings either side stays an alley opening onto the square (or rim, or landing). Uses no randomness.
+        /// </summary>
+        private static void CutAlleysAtOpenGround()
+        {
+            var open = OpenRects();
+            var kept = new List<Rect>();
+            var pieces = new List<Rect>();
+            foreach (var a in alleys)
+            {
+                pieces.Clear();
+                CutOpen(a, open, pieces, PlayerGap);
+                // Shortened only: a piece narrowed by open ground alongside would jog against the rest of the alley
+                // (version 8). That strip is left as open ground.
+                bool alongX = a.width > a.height;
+                foreach (var piece in pieces)
+                    if (!Since(8) || Mathf.Abs((alongX ? piece.height : piece.width) - (alongX ? a.height : a.width)) < 0.01f)
+                        kept.Add(piece);
+            }
+            alleys = kept;
+        }
+
+        /// <summary>The open ground (see <see cref="PittGreybox.IsOpen"/>) as rects: everything but the pit's round rim.</summary>
+        private static List<Rect> OpenRects()
+        {
+            var list = new List<Rect>();
+            foreach (var sq in g.gangSquares) list.Add(sq.rect);
+            foreach (var o in g.watcherOutposts) list.Add(o.landing);
+            list.AddRange(g.sumpSquares);
+            // The ramp corridor, as InRampCorridor with its 1.5 m margin: the ramp climbs along +Z.
+            float half = g.rampWidth * 0.5f + 1.5f;
+            list.Add(Rect.MinMaxRect(g.pitCenter.x - half, g.pitCenter.y, g.pitCenter.x + half, g.pitCenter.y + g.RampEnd + 1.5f));
+            return list;
+        }
+
+        /// <summary>The scrap pit and the rim kept open around it, as <see cref="PittGreybox.IsOpen"/>.</summary>
+        private static float PitRimRadius => g.pitRadius + 4f;
+
+        private static bool OverlapsPitRim(Rect r) => DistanceToRect(g.pitCenter, r) < PitRimRadius;
+
+        /// <summary>
+        /// What's left of a rect once the open ground is cut out of it: the parts beside each open rect, then any piece
+        /// reaching into the pit rim trimmed back from whichever side keeps the most. Pieces narrower than
+        /// <paramref name="minSide"/> are dropped.
+        /// </summary>
+        private static void CutOpen(Rect r, List<Rect> open, List<Rect> into, float minSide)
+        {
+            var pieces = new List<Rect> { r };
+            foreach (var o in open)
+            {
+                if (!r.Overlaps(o)) continue;
+                var next = new List<Rect>();
+                foreach (var p in pieces) Subtract(p, o, next);
+                pieces = next;
+            }
+            foreach (var p in pieces)
+            {
+                var piece = p;
+                if (OverlapsPitRim(piece))
+                {
+                    var cut = CutFromPitRim(piece);
+                    if (cut == null) continue;
+                    piece = cut.Value;
+                }
+                if (piece.width >= minSide && piece.height >= minSide) into.Add(piece);
+            }
+        }
+
+        /// <summary>The parts of <paramref name="a"/> outside <paramref name="b"/>: whole-height strips either side, then the rest above and below.</summary>
+        private static void Subtract(Rect a, Rect b, List<Rect> into)
+        {
+            if (!a.Overlaps(b))
+            {
+                into.Add(a);
+                return;
+            }
+            if (b.xMin > a.xMin) into.Add(Rect.MinMaxRect(a.xMin, a.yMin, b.xMin, a.yMax));
+            if (b.xMax < a.xMax) into.Add(Rect.MinMaxRect(b.xMax, a.yMin, a.xMax, a.yMax));
+            float x0 = Mathf.Max(a.xMin, b.xMin), x1 = Mathf.Min(a.xMax, b.xMax);
+            if (b.yMin > a.yMin) into.Add(Rect.MinMaxRect(x0, a.yMin, x1, b.yMin));
+            if (b.yMax < a.yMax) into.Add(Rect.MinMaxRect(x0, b.yMax, x1, a.yMax));
+        }
+
+        /// <summary>A rect cut back from one side until it clears the pit rim, keeping as much as it can; null if nothing's left.</summary>
+        private static Rect? CutFromPitRim(Rect r)
+        {
+            Rect? best = null;
+            float bestArea = 0f;
+            for (int side = 0; side < 4; side++)
+            {
+                Rect Cut(float d) => side switch
+                {
+                    0 => Rect.MinMaxRect(r.xMin + d, r.yMin, r.xMax, r.yMax),
+                    1 => Rect.MinMaxRect(r.xMin, r.yMin, r.xMax - d, r.yMax),
+                    2 => Rect.MinMaxRect(r.xMin, r.yMin + d, r.xMax, r.yMax),
+                    _ => Rect.MinMaxRect(r.xMin, r.yMin, r.xMax, r.yMax - d),
+                };
+                float lo = 0f, hi = side < 2 ? r.width : r.height;
+                if (OverlapsPitRim(Cut(hi - 0.05f))) continue;
+                for (int k = 0; k < 16; k++)
+                {
+                    float mid = (lo + hi) / 2f;
+                    if (OverlapsPitRim(Cut(mid))) lo = mid;
+                    else hi = mid;
+                }
+                var c = Cut(hi);
+                if (c.width * c.height > bestArea)
+                {
+                    bestArea = c.width * c.height;
+                    best = c;
+                }
+            }
+            return best;
         }
 
         /// <summary>
@@ -1484,7 +1652,7 @@ namespace ThePitt.World.Generation
                 if (g.IsOpen(p)) continue;
                 g.alleySpots.Add(new PittGreybox.AlleySpot
                 {
-                    position = new Vector3(p.x, g.HeightAt(p), p.y),
+                    position = new Vector3(p.x, FloorAt(p), p.y),
                     outward = outward,
                     width = alongX ? a.height : a.width,
                 });
@@ -1508,6 +1676,73 @@ namespace ThePitt.World.Generation
             RecordAlleySpots();
         }
 
+        /// <summary>
+        /// From version 8, a piece of small alley left narrower than the alley it was cut from (a terrace edge running
+        /// part way down it) is built over, like one with an edge all down its length: it would jog against the rest.
+        /// Returns the pieces (taken out of <see cref="alleys"/>). Uses no randomness.
+        /// </summary>
+        private static List<Rect> FillNarrowedAlleys()
+        {
+            var kept = new List<Rect>();
+            var narrowed = new List<Rect>();
+            foreach (var a in alleys)
+            {
+                bool narrower = false;
+                foreach (var (made, alongZ) in alleyRuns)
+                {
+                    if (!made.Overlaps(a)) continue;
+                    narrower = Mathf.Abs((alongZ ? a.width : a.height) - (alongZ ? made.width : made.height)) > 0.01f;
+                    break;
+                }
+                (narrower ? narrowed : kept).Add(a);
+            }
+            alleys = kept;
+            return narrowed;
+        }
+
+        /// <summary>The small alleys as <see cref="Split"/> made them, with the way each runs, for lining up the next (version 8).</summary>
+        private static List<(Rect rect, bool alongZ)> alleyRuns;
+
+        /// <summary>
+        /// From version 8, a new small alley across <paramref name="r"/> that would carry on from one already made (its
+        /// end on r's edge, or just across an alley crossing between them) takes that alley's exact line and width. If
+        /// that leaves too little lot either side, no alley is made here and the other dead-ends instead: two alleys
+        /// meeting slightly out of line leave a jog too tight to pass. Uses no randomness.
+        /// </summary>
+        private static void LineUpAlley(Rect r, bool alongX, float min, ref float gap, ref float cut)
+        {
+            // Splitting along X makes an alley running along Z, across r from its bottom edge to its top.
+            float lo = alongX ? r.xMin : r.yMin, hi = alongX ? r.xMax : r.yMax;
+            float start = alongX ? r.yMin : r.xMin, end = alongX ? r.yMax : r.xMax;
+            float reach = g.alleyWidth.y + 0.1f;
+            bool found = false;
+            float lineLo = 0f, lineHi = 0f;
+            foreach (var (a, alongZ) in alleyRuns)
+            {
+                if (alongZ != alongX) continue;
+                float aLo = alongX ? a.xMin : a.yMin, aHi = alongX ? a.xMax : a.yMax;
+                float aStart = alongX ? a.yMin : a.xMin, aEnd = alongX ? a.yMax : a.xMax;
+                bool meets = (aEnd <= start + 0.01f && aEnd >= start - reach) || (aStart >= end - 0.01f && aStart <= end + reach);
+                if (!meets || aHi <= lo || aLo >= hi) continue;
+                // Alleys at both ends out of line with each other: whichever this followed, the other would jog.
+                if (found && (Mathf.Abs(aLo - lineLo) > 0.01f || Mathf.Abs(aHi - lineHi) > 0.01f))
+                {
+                    gap = 0f;
+                    return;
+                }
+                found = true;
+                lineLo = aLo;
+                lineHi = aHi;
+            }
+            if (!found) return;
+            if (lineLo - lo >= min && hi - lineHi >= min)
+            {
+                gap = lineHi - lineLo;
+                cut = lineLo - lo;
+            }
+            else gap = 0f;
+        }
+
         private static void Split(Rect r, List<Rect> lots)
         {
             float max = g.lotSize.y, min = g.lotSize.x;
@@ -1522,21 +1757,28 @@ namespace ThePitt.World.Generation
             float gap = Chance(g.alleyChance) ? R(g.alleyWidth) : 0f;
             if (length - gap < min * 2f) gap = 0f;
             float cut = R(0.35f, 0.65f) * (length - gap);
+            if (gap > 0f && Since(8)) LineUpAlley(r, alongX, min, ref gap, ref cut);
 
             if (alongX)
             {
                 float x = r.xMin + cut;
                 Split(Rect.MinMaxRect(r.xMin, r.yMin, x, r.yMax), lots);
                 Split(Rect.MinMaxRect(x + gap, r.yMin, r.xMax, r.yMax), lots);
-                if (gap > 0f) alleys.Add(Rect.MinMaxRect(x, r.yMin, x + gap, r.yMax));
+                if (gap > 0f) AddAlley(Rect.MinMaxRect(x, r.yMin, x + gap, r.yMax), true);
             }
             else
             {
                 float z = r.yMin + cut;
                 Split(Rect.MinMaxRect(r.xMin, r.yMin, r.xMax, z), lots);
                 Split(Rect.MinMaxRect(r.xMin, z + gap, r.xMax, r.yMax), lots);
-                if (gap > 0f) alleys.Add(Rect.MinMaxRect(r.xMin, z, r.xMax, z + gap));
+                if (gap > 0f) AddAlley(Rect.MinMaxRect(r.xMin, z, r.xMax, z + gap), false);
             }
+        }
+
+        private static void AddAlley(Rect a, bool alongZ)
+        {
+            alleys.Add(a);
+            alleyRuns?.Add((a, alongZ));
         }
 
         private static bool TouchesOpen(Rect r)
@@ -1742,7 +1984,7 @@ namespace ThePitt.World.Generation
                 var p = plans[i];
                 if (p.hollow) BuildHollow(parent, hidden, p, mats[i]);
                 // With sump tunnels, bottoms stop just under the street so the tunnels can run beneath.
-                else Box("Building", parent, p.footprint, p.groundMin - BuildingSink, p.top, mats[i]);
+                else Box("Building", parent, p.footprint, p.groundMin - BuildingSink, p.top, mats[i], ground: p.groundMin);
             }
         }
 
@@ -1892,7 +2134,17 @@ namespace ThePitt.World.Generation
                 if (Mathf.Abs(g.HeightAt(probe) - ground) > 0.25f) return false;
             // Clear of terrace edges: a door close to a retaining wall can open onto a pocket with no way out.
             GroundRange(Square(wallPoint + normal * 2.5f, 3.5f), out float low, out float high);
-            return high - low < 0.3f;
+            if (high - low >= 0.3f) return false;
+            if (Since(6))
+            {
+                // From version 6 the door stands on the kerb (or alley floor) in front of it: kerb across the whole
+                // doorway, or none, so a frame never hangs off the end of one.
+                var foot = wallPoint + normal * 0.1f;
+                bool kerb = OnKerb(foot);
+                if (OnKerb(foot + along * 0.75f) != kerb || OnKerb(foot - along * 0.75f) != kerb) return false;
+                ground = FloorAt(foot);
+            }
+            return true;
         }
 
         /// <summary>Height of the street at the foot of a wall, for things fixed to it at street level.</summary>
@@ -1933,7 +2185,7 @@ namespace ThePitt.World.Generation
         {
             var spot = home.doorPoint + home.doorNormal * 3f;
             g.startPoint = spot;
-            var position = new Vector3(spot.x, home.doorGround + 0.05f, spot.y);
+            var position = new Vector3(spot.x, (Since(6) ? FloorAt(spot) : home.doorGround) + 0.05f, spot.y);
             var facing = Quaternion.LookRotation(new Vector3(-home.doorNormal.x, 0f, -home.doorNormal.y));
             g.startPosition = position;
             g.startYaw = facing.eulerAngles.y;
@@ -2021,7 +2273,7 @@ namespace ThePitt.World.Generation
                 float mid = inner.center.y;
                 Box("Wall", room, Rect.MinMaxRect(lo, outer.yMin, hi, mid - doorHalf), floor, floor + height, g.brick);
                 Box("Wall", room, Rect.MinMaxRect(lo, mid + doorHalf, hi, outer.yMax), floor, floor + height, g.brick);
-                Box("Lintel", room, Rect.MinMaxRect(lo, mid - doorHalf, hi, mid + doorHalf), floor + 2.4f, floor + height, g.brick);
+                Box("Lintel", room, Rect.MinMaxRect(lo, mid - doorHalf, hi, mid + doorHalf), floor + 2.4f, floor + height, g.brick, ground: floor);
                 var seal = Box("Seal", room, Rect.MinMaxRect(lo, mid - doorHalf, hi, mid + doorHalf), floor, floor + 2.4f, g.concreteDark);
                 seals.Add(seal);
 
@@ -2159,7 +2411,7 @@ namespace ThePitt.World.Generation
             {
                 if (kv.Key != p.holeNormal)
                 {
-                    Box("Wall", room, kv.Value, bottom, ceiling, mat);
+                    Box("Wall", room, kv.Value, bottom, ceiling, mat, ground: p.groundMin);
                     continue;
                 }
                 // Split the alley-facing wall around a squeeze-through hole.
@@ -2182,14 +2434,14 @@ namespace ThePitt.World.Generation
                     b = Rect.MinMaxRect(r.xMin, end, r.xMax, r.yMax);
                     mid = Rect.MinMaxRect(r.xMin, start, r.xMax, end);
                 }
-                Box("Wall", room, a, bottom, ceiling, mat);
-                Box("Wall", room, b, bottom, ceiling, mat);
-                Box("Lintel", room, mid, p.ground + holeHeight, ceiling, mat);
-                Box("Sill", room, mid, bottom, p.groundMin + 0.02f, mat);
+                Box("Wall", room, a, bottom, ceiling, mat, ground: p.groundMin);
+                Box("Wall", room, b, bottom, ceiling, mat, ground: p.groundMin);
+                Box("Lintel", room, mid, p.ground + holeHeight, ceiling, mat, ground: p.groundMin);
+                Box("Sill", room, mid, bottom, p.groundMin + 0.02f, mat, ground: p.groundMin);
             }
 
-            Box("Roof", room, fp, ceiling, ceiling + 0.3f, mat);
-            if (p.top > ceiling + 1f) Box("Upper", room, fp, ceiling + 0.3f, p.top, mat);
+            Box("Roof", room, fp, ceiling, ceiling + 0.3f, mat, ground: p.groundMin);
+            if (p.top > ceiling + 1f) Box("Upper", room, fp, ceiling + 0.3f, p.top, mat, ground: p.groundMin);
 
             // Inside: one weak, failing light and a marker for future black markets / dead drops.
             var palette = PaletteAt(fp.center);
@@ -2380,6 +2632,7 @@ namespace ThePitt.World.Generation
         private static void BuildHeights(Transform root)
         {
             stairZones = new List<Rect>();
+            stairFlights = new();
             if (g.terraces.Count == 0) return;
             var parent = Group(root, "Heights");
             // The flights and landings are surfaced like the street they climb from.
@@ -2399,6 +2652,45 @@ namespace ThePitt.World.Generation
                     (r.xMin, false, Vector2.left, Mathf.Max(r.yMin, -h), Mathf.Min(r.yMax, h)),
                     (r.xMax, false, Vector2.right, Mathf.Max(r.yMin, -h), Mathf.Min(r.yMax, h)),
                 };
+                // A street crossing an edge square-on, with the ground just beyond lower (stairs are only built from the
+                // higher side): where its flight would go, and from version 11 how far buildings line both sides of
+                // the street below, down it from the edge.
+                bool Crossing((float line, bool alongX, Vector2 normal, float from, float to) e, Segment sg,
+                    out float cross0, out float cross1, out float hOut, out float room, out float flank)
+                {
+                    var sr = sg.rect;
+                    cross0 = e.alongX ? sr.xMin : sr.yMin;
+                    cross1 = e.alongX ? sr.xMax : sr.yMax;
+                    hOut = room = flank = 0f;
+                    if (sg.alongX == e.alongX) return false;
+                    float span0 = e.alongX ? sr.yMin : sr.xMin, span1 = e.alongX ? sr.yMax : sr.xMax;
+                    if (cross1 < e.from || cross0 > e.to || e.line < span0 || e.line > span1) return false;
+                    Vector2 Point(float a) => e.alongX ? new Vector2(a, e.line) : new Vector2(e.line, a);
+                    hOut = g.HeightAt(Point((cross0 + cross1) / 2f) + e.normal * 1.5f);
+                    if (hIn - hOut < 0.3f) return false;
+                    bool positive = e.normal.x + e.normal.y > 0f;
+                    room = positive ? (e.alongX ? sr.yMax : sr.xMax) - e.line : e.line - (e.alongX ? sr.yMin : sr.xMin);
+                    if (Since(11))
+                        for (float d = 0.6f; d < room; d += 0.1f)
+                        {
+                            if (!BuildingAt(Point(cross0 - 0.3f) + e.normal * d) || !BuildingAt(Point(cross1 + 0.3f) + e.normal * d)) break;
+                            flank = d;
+                        }
+                    return true;
+                }
+                bool Flanked(float hOut, float flank) => flank >= Mathf.CeilToInt((hIn - hOut) / StepHeight) * MinTread;
+
+                // From version 12 a flight that can't fit between buildings isn't built (the street ends at the wall)
+                // unless the terrace has no other way up: one that can.
+                bool anyFlanked = false;
+                if (Since(12))
+                    foreach (var e in edges)
+                    {
+                        if (Mathf.Abs(e.line) >= h || e.to <= e.from) continue;
+                        foreach (var sg in segments)
+                            if (Crossing(e, sg, out _, out _, out float ho, out _, out float fl) && Flanked(ho, fl)) anyFlanked = true;
+                    }
+
                 foreach (var e in edges)
                 {
                     if (Mathf.Abs(e.line) >= h || e.to <= e.from) continue;
@@ -2406,18 +2698,10 @@ namespace ThePitt.World.Generation
                     var gaps = new List<(float a, float b)>();
                     foreach (var sg in segments)
                     {
-                        // Only streets crossing this edge square-on.
-                        if (sg.alongX == e.alongX) continue;
+                        if (!Crossing(e, sg, out float cross0, out float cross1, out float hOut, out float room, out float flank)) continue;
                         var sr = sg.rect;
-                        float cross0 = e.alongX ? sr.xMin : sr.yMin, cross1 = e.alongX ? sr.xMax : sr.yMax;
-                        float span0 = e.alongX ? sr.yMin : sr.xMin, span1 = e.alongX ? sr.yMax : sr.xMax;
-                        if (cross1 < e.from || cross0 > e.to || e.line < span0 || e.line > span1) continue;
-
-                        // The ground just beyond the edge: only built from the higher side.
                         var crossMid = At((cross0 + cross1) / 2f);
-                        float hOut = g.HeightAt(crossMid + e.normal * 1.5f);
                         float rise = hIn - hOut;
-                        if (rise < 0.3f) continue;
                         int steps = Mathf.CeilToInt(rise / StepHeight);
                         float tread = R(0.28f, 0.45f);
                         bool midLanding = rise > 3.2f && Chance(0.7f);
@@ -2427,13 +2711,20 @@ namespace ThePitt.World.Generation
                         // Down the street on the low side, outside this terrace.
                         var lowDir = e.normal;
                         bool lowIsPositive = lowDir.x + lowDir.y > 0f;
-                        float room = lowIsPositive ? (e.alongX ? sr.yMax : sr.xMax) - e.line : e.line - (e.alongX ? sr.yMin : sr.xMin);
+                        // From version 11 the flight stays between the buildings either side of it rather than running
+                        // on past them, out beside an alley or across a street, wherever it can fit steepened.
+                        if (Since(11) && Flanked(hOut, flank)) room = Mathf.Min(room, flank + 0.5f);
+                        else if (Since(12) && anyFlanked)
+                        {
+                            R(6f, 10f); // the lamp roll every built flight makes, so the rest come out the same
+                            continue;
+                        }
                         if (room < run + 0.5f)
                         {
                             // Short street: one flight, steeper.
                             midLanding = false;
                             landing = 0f;
-                            tread = Mathf.Max(0.26f, (room - 0.5f) / steps);
+                            tread = Mathf.Max(MinTread, (room - 0.5f) / steps);
                             run = steps * tread;
                         }
                         if (room < run + 0.5f)
@@ -2448,6 +2739,7 @@ namespace ThePitt.World.Generation
                             : (lowIsPositive ? Rect.MinMaxRect(e.line, cross0, e.line + run, cross1) : Rect.MinMaxRect(e.line - run, cross0, e.line, cross1));
                         float lowY = hOut, highY = hIn;
                         var up = -lowDir;
+                        var flights = new List<(float from, float to, float bottom, float top)>();
                         if (midLanding)
                         {
                             int lower = steps / 2;
@@ -2455,8 +2747,15 @@ namespace ThePitt.World.Generation
                             BuildStairs(terrace, Slice(stair, up, 0f, lower * tread), up, lowY, midY, stairSurface);
                             Box("Landing", terrace, Slice(stair, up, lower * tread, lower * tread + landing), lowY - 0.05f, midY, stairSurface);
                             BuildStairs(terrace, Slice(stair, up, lower * tread + landing, run), up, midY, highY, stairSurface);
+                            flights.Add((0f, lower * tread, lowY, midY));
+                            flights.Add((lower * tread + landing, run, midY, highY));
                         }
-                        else BuildStairs(terrace, stair, up, lowY, highY, stairSurface);
+                        else
+                        {
+                            BuildStairs(terrace, stair, up, lowY, highY, stairSurface);
+                            flights.Add((0f, run, lowY, highY));
+                        }
+                        stairFlights.Add((stair, up, run, flights));
                         // Top landing reaching over the edge, where the ground dips between the levels.
                         Box("TopLanding", terrace, Slice(stair, up, run - 0.05f, run + 0.9f), lowY - 0.05f, highY, stairSurface);
                         stairZones.Add(Slice(stair, up, 0f, run + 0.9f));
@@ -2504,6 +2803,360 @@ namespace ThePitt.World.Generation
                     Wall(cursor, e.to);
                 }
             }
+        }
+
+        // ---------------------------------------------------------------- kerbs (version 6)
+
+        /// <summary>Whether a point is on a kerb or a small alley's floor, both raised <see cref="PittGreybox.kerbHeight"/> (version 6).</summary>
+        private static bool OnKerb(Vector2 p) =>
+            Since(6) && (alleyIndex.Contains(p) || (kerbIndex != null && kerbIndex.Contains(p)));
+
+        /// <summary>Height of what's underfoot: the ground, or from version 6 the top of a kerb or alley floor.</summary>
+        private static float FloorAt(Vector2 p) => g.HeightAt(p) + (OnKerb(p) ? g.kerbHeight : 0f);
+
+        /// <summary>
+        /// From version 6, concrete kerbs along the foot of every building wall facing a street or square, stopping
+        /// where the building stops (round its corners, never on out into open ground), and wherever a small alley
+        /// opens onto a street the kerb runs across its mouth and the alley is floored at kerb height all through.
+        /// Kept off stairs and sump stairwells. Run after <see cref="BuildHeights"/> (the stairs) and before anything
+        /// that stands on the ground (see <see cref="FloorAt"/>). Uses no randomness.
+        /// </summary>
+        private static void BuildKerbs(Transform root)
+        {
+            kerbIndex = new RectIndex();
+            if (!Since(6)) return;
+            var parent = Group(root, "Kerbs");
+            var mat = g.kerb != null ? g.kerb : g.concreteDark;
+            float rise = g.kerbHeight;
+            const float cell = 0.5f;
+
+            // From version 9 a wall facing a thoroughfare gets a sidewalk instead of a kerb.
+            var thoroughfares = new RectIndex();
+            foreach (var seg in segments) if (seg.thoroughfare) thoroughfares.Add(seg.rect);
+            float WidthAt(Vector2 wallPoint, Vector2 normal) =>
+                Since(9) && thoroughfares.Contains(wallPoint + normal * 0.2f) ? g.sidewalkWidth : g.kerbWidth;
+
+            void Lay(string name, Rect r, float ground)
+            {
+                Box(name, parent, r, ground - 0.1f, ground + rise, mat, ground: ground);
+                kerbIndex.Add(r);
+            }
+
+            // Whether a piece of kerb can go here: on a street or square, level, clear of stairs and stairwells.
+            bool Fits(Rect r, out float h)
+            {
+                var c = r.center;
+                h = g.HeightAt(c);
+                if (OffMap(c) || alleyIndex.Contains(c) || !(streetIndex.Contains(c) || g.IsOpen(c))) return false;
+                var inner = Grow(r, -0.02f);
+                foreach (var q in new[] { new Vector2(inner.xMin, inner.yMin), new Vector2(inner.xMax, inner.yMin),
+                             new Vector2(inner.xMin, inner.yMax), new Vector2(inner.xMax, inner.yMax) })
+                    if (Mathf.Abs(g.HeightAt(q) - h) > 0.05f) return false;
+                foreach (var z in stairZones) if (Grow(z, 0.05f).Overlaps(r)) return false;
+                foreach (var sh in g.sumpShafts) if (Grow(sh, 0.3f).Overlaps(r)) return false;
+                return BuildingIn(r) == null;
+            }
+
+            // A building the rect runs into, where two stand close at a corner.
+            Rect? BuildingIn(Rect r)
+            {
+                foreach (var q in new[] { r.center, r.min, r.max, new Vector2(r.xMin, r.yMax), new Vector2(r.xMax, r.yMin) })
+                {
+                    var near = PlansNear(q);
+                    if (near == null) continue;
+                    foreach (var plan in near)
+                        if (Grow(plan.footprint, -0.01f).Overlaps(r)) return plan.footprint;
+                }
+                return null;
+            }
+
+            Rect Between(Vector2 a, Vector2 b) =>
+                Rect.MinMaxRect(Mathf.Min(a.x, b.x), Mathf.Min(a.y, b.y), Mathf.Max(a.x, b.x), Mathf.Max(a.y, b.y));
+
+            // Along each building face, in runs of level kerb. Faces go left, right, down, up (as Faces), each from
+            // its low corner to its high one; whether each end got kerb decides the corner pieces.
+            var endKerb = new bool[4, 2];
+            var endHeight = new float[4, 2];
+            var endWidth = new float[4, 2];
+            foreach (var plan in plans)
+            {
+                var fp = plan.footprint;
+                for (int f = 0; f < 4; f++)
+                {
+                    var normal = Faces[f];
+                    Vector2 a, b;
+                    if (normal.x != 0f)
+                    {
+                        float x = normal.x < 0f ? fp.xMin : fp.xMax;
+                        a = new Vector2(x, fp.yMin);
+                        b = new Vector2(x, fp.yMax);
+                    }
+                    else
+                    {
+                        float z = normal.y < 0f ? fp.yMin : fp.yMax;
+                        a = new Vector2(fp.xMin, z);
+                        b = new Vector2(fp.xMax, z);
+                    }
+                    float length = Vector2.Distance(a, b);
+                    var dir = (b - a) / length;
+                    int n = Mathf.Max(1, Mathf.CeilToInt(length / cell));
+                    float step = length / n;
+                    endKerb[f, 0] = endKerb[f, 1] = false;
+
+                    int runStart = -1;
+                    float runH = 0f, runW = 0f;
+                    void Flush(int end)
+                    {
+                        if (runStart >= 0) Lay("Kerb", Between(a + dir * runStart * step, a + dir * end * step + normal * runW), runH);
+                        runStart = -1;
+                    }
+                    for (int i = 0; i < n; i++)
+                    {
+                        float w = WidthAt(a + dir * (i + 0.5f) * step, normal);
+                        var piece = Between(a + dir * i * step, a + dir * (i + 1) * step + normal * w);
+                        bool fits = Fits(piece, out float h);
+                        // Running into a neighbour: what's left short of it stands on its own, so the kerb meets its wall.
+                        Rect? stub = null;
+                        var other = fits ? null : BuildingIn(piece);
+                        if (other != null)
+                        {
+                            var o = other.Value;
+                            var cut = dir.x != 0f
+                                ? (o.xMin <= piece.xMin ? Rect.MinMaxRect(o.xMax, piece.yMin, piece.xMax, piece.yMax) : Rect.MinMaxRect(piece.xMin, piece.yMin, o.xMin, piece.yMax))
+                                : (o.yMin <= piece.yMin ? Rect.MinMaxRect(piece.xMin, o.yMax, piece.xMax, piece.yMax) : Rect.MinMaxRect(piece.xMin, piece.yMin, piece.xMax, o.yMin));
+                            if (cut.width > 0.05f && cut.height > 0.05f && Fits(cut, out float ch) && Mathf.Abs(ch - h) < 0.01f) stub = cut;
+                        }
+                        if (i == 0) { endKerb[f, 0] = fits; endHeight[f, 0] = h; endWidth[f, 0] = w; }
+                        if (i == n - 1) { endKerb[f, 1] = fits; endHeight[f, 1] = h; endWidth[f, 1] = w; }
+                        if (runStart >= 0 && (!fits || Mathf.Abs(h - runH) > 0.01f || w != runW)) Flush(i);
+                        if (stub != null) Lay("Kerb", stub.Value, h);
+                        if (fits && runStart < 0)
+                        {
+                            runStart = i;
+                            runH = h;
+                            runW = w;
+                        }
+                    }
+                    Flush(n);
+                }
+
+                // Round each outside corner where both faces' kerbs reach it.
+                void Corner(int fx, int ex, int fz, int ez)
+                {
+                    if (!endKerb[fx, ex] || !endKerb[fz, ez] || Mathf.Abs(endHeight[fx, ex] - endHeight[fz, ez]) > 0.01f) return;
+                    var nx = Faces[fx];
+                    var nz = Faces[fz];
+                    var c = new Vector2(nx.x < 0f ? fp.xMin : fp.xMax, nz.y < 0f ? fp.yMin : fp.yMax);
+                    // Each face's kerb reaches out its own width: a sidewalk one way, a kerb the other.
+                    var square = Between(c, c + nx * endWidth[fx, ex] + nz * endWidth[fz, ez]);
+                    if (Fits(square, out float h)) Lay("KerbCorner", square, h);
+                }
+                Corner(0, 0, 2, 0);
+                Corner(0, 1, 3, 0);
+                Corner(1, 0, 2, 1);
+                Corner(1, 1, 3, 1);
+            }
+
+            // Small alleys: floored at kerb height, with the kerb carried across the mouth onto the street.
+            foreach (var alley in alleys)
+            {
+                float h = g.HeightAt(alley.center);
+                Box("AlleyFloor", parent, alley, h - 0.1f, h + rise, mat, ground: h);
+                var c = alley.center;
+                float left = WidthAt(new Vector2(alley.xMin, c.y), Vector2.left), right = WidthAt(new Vector2(alley.xMax, c.y), Vector2.right);
+                float down = WidthAt(new Vector2(c.x, alley.yMin), Vector2.down), up = WidthAt(new Vector2(c.x, alley.yMax), Vector2.up);
+                foreach (var mouth in new[]
+                         {
+                             Rect.MinMaxRect(alley.xMin - left, alley.yMin, alley.xMin, alley.yMax),
+                             Rect.MinMaxRect(alley.xMax, alley.yMin, alley.xMax + right, alley.yMax),
+                             Rect.MinMaxRect(alley.xMin, alley.yMin - down, alley.xMax, alley.yMin),
+                             Rect.MinMaxRect(alley.xMin, alley.yMax, alley.xMax, alley.yMax + up),
+                         })
+                    if (Fits(mouth, out float mh)) Lay("KerbMouth", mouth, mh);
+            }
+
+            if (Since(10)) BuildStairKerbs(parent, mat, WidthAt);
+        }
+
+        /// <summary>
+        /// From version 10 the kerbs and sidewalks along a building beside a terrace stair climb it instead of stopping
+        /// at its foot: a ramp <see cref="PittGreybox.kerbHeight"/> above the nose of every step, rising straight off the
+        /// street's kerb a tread short of the foot, levelling out on a mid landing, and meeting the kerb on the terrace
+        /// where the top step ends. The steps under it are buried in it. Each ramp runs on level past both ends of the
+        /// stair, over the ends of the level kerbs (they stop short of stairs), so the two join without a gap.
+        /// </summary>
+        private static void BuildStairKerbs(Transform parent, Material mat, System.Func<Vector2, Vector2, float> widthAt)
+        {
+            const float overlap = 0.55f; // a kerb cell and its margin: as far short of a stair as the level kerb can stop
+            const float topLanding = 0.9f;
+            foreach (var s in stairFlights)
+            {
+                // Positions as distance t up the flight from its foot (the stair rect's low edge), and across it.
+                bool climbsX = s.up.x != 0f;
+                float sign = climbsX ? s.up.x : s.up.y;
+                float foot = climbsX ? (sign > 0f ? s.stair.xMin : s.stair.xMax) : (sign > 0f ? s.stair.yMin : s.stair.yMax);
+                Vector2 At(float t, float across) => climbsX ? new Vector2(foot + sign * t, across) : new Vector2(across, foot + sign * t);
+                float Along(Vector2 p) => ((climbsX ? p.x : p.y) - foot) * sign;
+
+                // Each flight's steps (as BuildStairs cuts them) and the line a step's depth ahead of their noses: the
+                // kerb's top runs that far above it, so it clears every nose and starts level with the street's kerb.
+                var breaks = new List<float>();
+                float Ground(float t)
+                {
+                    float y = s.flights[0].bottom;
+                    foreach (var f in s.flights)
+                    {
+                        float depth = (f.to - f.from) / Mathf.Max(1, Mathf.CeilToInt((f.top - f.bottom) / StepHeight));
+                        y += Mathf.Clamp((t - f.from + depth) * (f.top - f.bottom) / (f.to - f.from), 0f, f.top - f.bottom);
+                    }
+                    return y;
+                }
+                foreach (var f in s.flights)
+                {
+                    float depth = (f.to - f.from) / Mathf.Max(1, Mathf.CeilToInt((f.top - f.bottom) / StepHeight));
+                    breaks.Add(f.from - depth);
+                    breaks.Add(f.to - depth);
+                }
+                float t0 = breaks[0] - overlap, t1 = s.run + topLanding + overlap;
+                float bottom = s.flights[0].bottom - 0.1f;
+
+                // Both sides: whichever buildings line them, each with its own kerb or sidewalk.
+                var lined = new List<(float from, float to)>();
+                for (int side = 0; side < 2; side++)
+                {
+                    float line = climbsX ? (side == 0 ? s.stair.yMin : s.stair.yMax) : (side == 0 ? s.stair.xMin : s.stair.xMax);
+                    float outward = side == 0 ? -1f : 1f; // towards the building, across the flight
+                    var lining = new List<Plan>();
+                    lined.Clear();
+                    for (float t = t0; t <= t1; t += 0.25f)
+                    {
+                        var probe = At(t, line + outward * 0.3f);
+                        var near = PlansNear(probe);
+                        if (near == null) continue;
+                        foreach (var plan in near)
+                            if (plan.footprint.Contains(probe) && !lining.Contains(plan)) lining.Add(plan);
+                    }
+                    foreach (var plan in lining)
+                    {
+                        var fp = plan.footprint;
+                        float wall = climbsX ? (outward < 0f ? fp.yMax : fp.yMin) : (outward < 0f ? fp.xMax : fp.xMin);
+                        if (Mathf.Abs(wall - line) > 0.6f) continue;
+                        float a = Along(fp.min), b = Along(fp.max);
+                        float from = Mathf.Max(t0, Mathf.Min(a, b)), to = Mathf.Min(t1, Mathf.Max(a, b));
+                        if (to - from < 0.1f) continue;
+
+                        var normal = climbsX ? new Vector2(0f, -outward) : new Vector2(-outward, 0f);
+                        float w = widthAt(At((from + to) / 2f, wall), normal);
+                        // From version 13, where the building ends beside the flight (its corner by the foot), the
+                        // ramp carries on round the corner as far out as the kerb along its front, filling the corner.
+                        float start = from;
+                        if (Since(13) && Mathf.Min(a, b) > t0)
+                        {
+                            float front = widthAt(At(from, wall - outward * 0.05f), -s.up);
+                            // Only at a corner: no other building carrying the wall on past it.
+                            var beside = At(from - front / 2f, wall + outward * 0.3f);
+                            var beyond = At(from - front / 2f, wall - outward * w / 2f);
+                            if (!BuildingAt(beside) && !BuildingAt(beyond) && streetIndex.Contains(beyond)) start = from - front;
+                        }
+                        Climb("StairKerb", start, to, wall, wall - outward * w);
+                        lined.Add((from, to));
+                    }
+
+                    // From version 11, where no building lines the flight (one too long to fit between them even
+                    // steepened), a kerb runs up its edge anyway, closing off the ends of the steps.
+                    if (!Since(11)) continue;
+                    lined.Sort((x, y) => x.from.CompareTo(y.from));
+                    // A touch proud of the stair's edge, so its face doesn't fight the ends of the steps (from version 12).
+                    float cheekOuter = line + (Since(12) ? outward * 0.02f : 0f);
+                    float cursor = 0f;
+                    foreach (var l in lined)
+                    {
+                        if (l.from - cursor > 0.05f) Climb("StairCheek", cursor, l.from, cheekOuter, line - outward * g.kerbWidth);
+                        cursor = Mathf.Max(cursor, l.to);
+                    }
+                    if (s.run - cursor > 0.05f) Climb("StairCheek", cursor, s.run, cheekOuter, line - outward * g.kerbWidth);
+                }
+
+                // A ramp between two distances up the flight, from one line across it to another.
+                void Climb(string name, float from, float to, float outer, float inner)
+                {
+                    var ts = new List<float> { from };
+                    foreach (var k in breaks) if (k > from && k < to) ts.Add(k);
+                    ts.Add(to);
+                    ts.Sort();
+                    var outerSide = new Vector3[ts.Count];
+                    var innerSide = new Vector3[ts.Count];
+                    for (int i = 0; i < ts.Count; i++)
+                    {
+                        float y = Ground(ts[i]) + g.kerbHeight;
+                        outerSide[i] = ToV3(At(ts[i], outer), y);
+                        innerSide[i] = ToV3(At(ts[i], inner), y);
+                    }
+                    Ramp(name, parent, outerSide, innerSide, bottom, mat);
+                }
+            }
+        }
+
+        /// <summary>
+        /// A solid strip with a sloping top, down to a level bottom: the top edges on its two long sides given column
+        /// by column (in world space), with faces and UVs as <see cref="WorldCube"/>'s so it matches the boxes it meets.
+        /// Open underneath. Has a mesh collider.
+        /// </summary>
+        private static GameObject Ramp(string name, Transform parent, Vector3[] left, Vector3[] right, float bottom, Material m)
+        {
+            var verts = new List<Vector3>();
+            var normals = new List<Vector3>();
+            var uvs = new List<Vector2>();
+            var heights = new List<Vector2>();
+            var tris = new List<int>();
+            Vector3 Drop(Vector3 v) => new(v.x, bottom, v.z);
+            Vector3 Flat(Vector3 v) => new Vector3(v.x, 0f, v.z).normalized;
+            void Quad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 outward)
+            {
+                var n = Vector3.Cross(b - a, c - a);
+                if (n.sqrMagnitude < 1e-8f) n = Vector3.Cross(c - a, d - a);
+                if (Vector3.Dot(n, outward) < 0f) { (b, d) = (d, b); n = -n; }
+                n.Normalize();
+                // As WorldCube: tops take the ground's UVs, walls run U along themselves and V up.
+                var across = Mathf.Abs(n.y) > 0.5f ? Vector3.zero : Vector3.Cross(Flat(n), Vector3.up);
+                int i = verts.Count;
+                foreach (var v in new[] { a, b, c, d })
+                {
+                    verts.Add(v);
+                    normals.Add(n);
+                    uvs.Add(across == Vector3.zero ? new Vector2(v.x, v.z) : new Vector2(Vector3.Dot(v, across), v.y));
+                    heights.Add(new Vector2(v.y - bottom, 0f));
+                }
+                tris.AddRange(new[] { i, i + 1, i + 2, i, i + 2, i + 3 });
+            }
+            var toLeft = Flat(left[0] - right[0]);
+            for (int k = 0; k + 1 < left.Length; k++)
+            {
+                Quad(left[k], left[k + 1], right[k + 1], right[k], Vector3.up);
+                Quad(left[k], left[k + 1], Drop(left[k + 1]), Drop(left[k]), toLeft);
+                Quad(right[k], right[k + 1], Drop(right[k + 1]), Drop(right[k]), -toLeft);
+            }
+            int last = left.Length - 1;
+            var forward = Flat(left[last] - left[0]);
+            Quad(left[0], right[0], Drop(right[0]), Drop(left[0]), -forward);
+            Quad(left[last], right[last], Drop(right[last]), Drop(left[last]), forward);
+
+            var mesh = new Mesh { name = "Ramp" };
+            mesh.SetVertices(verts);
+            mesh.SetNormals(normals);
+            mesh.SetUVs(0, uvs);
+            mesh.SetUVs(3, heights);
+            mesh.SetTriangles(tris, 0);
+            mesh.RecalculateTangents();
+            mesh.RecalculateBounds();
+
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            go.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            go.AddComponent<MeshRenderer>().sharedMaterial = m;
+            go.AddComponent<MeshCollider>().sharedMesh = mesh;
+            return go;
         }
 
         /// <summary>
@@ -2660,7 +3313,7 @@ namespace ThePitt.World.Generation
                         {
                             float z = -g.HalfSize + (side > 0 ? j + 1 : j) * TunnelCell;
                             Box("Wall", walls, Rect.MinMaxRect(-g.HalfSize + startI * TunnelCell, z - 0.15f, -g.HalfSize + i * TunnelCell, z + 0.15f),
-                                wallLow, wallHigh, g.brick);
+                                wallLow, wallHigh, g.brick, ground: floorTop);
                             startI = -1;
                         }
                     }
@@ -2679,7 +3332,7 @@ namespace ThePitt.World.Generation
                         {
                             float x = -g.HalfSize + (side > 0 ? i + 1 : i) * TunnelCell;
                             Box("Wall", walls, Rect.MinMaxRect(x - 0.15f, -g.HalfSize + startJ * TunnelCell, x + 0.15f, -g.HalfSize + j * TunnelCell),
-                                wallLow, wallHigh, g.brick);
+                                wallLow, wallHigh, g.brick, ground: floorTop);
                             startJ = -1;
                         }
                     }
@@ -2753,10 +3406,10 @@ namespace ThePitt.World.Generation
             Box("Ceiling", cis, Rect.MinMaxRect(cistern.xMin, cs.yMax, cistern.xMax, cistern.yMax), cCeiling - 0.3f, cCeiling, g.concreteDark);
             Box("Ceiling", cis, Rect.MinMaxRect(cistern.xMin, cs.yMin, cs.xMin, cs.yMax), cCeiling - 0.3f, cCeiling, g.concreteDark);
             Box("Ceiling", cis, Rect.MinMaxRect(cs.xMax, cs.yMin, cistern.xMax, cs.yMax), cCeiling - 0.3f, cCeiling, g.concreteDark);
-            Box("Wall", cis, Rect.MinMaxRect(cistern.xMin - 0.3f, cistern.yMin - 0.3f, cistern.xMax + 0.3f, cistern.yMin), cFloor - 0.5f, cCeiling, g.brick);
-            Box("Wall", cis, Rect.MinMaxRect(cistern.xMin - 0.3f, cistern.yMax, cistern.xMax + 0.3f, cistern.yMax + 0.3f), cFloor - 0.5f, cCeiling, g.brick);
-            Box("Wall", cis, Rect.MinMaxRect(cistern.xMin - 0.3f, cistern.yMin, cistern.xMin, cistern.yMax), cFloor - 0.5f, cCeiling, g.brick);
-            Box("Wall", cis, Rect.MinMaxRect(cistern.xMax, cistern.yMin, cistern.xMax + 0.3f, cistern.yMax), cFloor - 0.5f, cCeiling, g.brick);
+            Box("Wall", cis, Rect.MinMaxRect(cistern.xMin - 0.3f, cistern.yMin - 0.3f, cistern.xMax + 0.3f, cistern.yMin), cFloor - 0.5f, cCeiling, g.brick, ground: cFloor);
+            Box("Wall", cis, Rect.MinMaxRect(cistern.xMin - 0.3f, cistern.yMax, cistern.xMax + 0.3f, cistern.yMax + 0.3f), cFloor - 0.5f, cCeiling, g.brick, ground: cFloor);
+            Box("Wall", cis, Rect.MinMaxRect(cistern.xMin - 0.3f, cistern.yMin, cistern.xMin, cistern.yMax), cFloor - 0.5f, cCeiling, g.brick, ground: cFloor);
+            Box("Wall", cis, Rect.MinMaxRect(cistern.xMax, cistern.yMin, cistern.xMax + 0.3f, cistern.yMax), cFloor - 0.5f, cCeiling, g.brick, ground: cFloor);
             // The stairs face away from the street stairs' chamber quadrant.
             var cisUp = new Vector2(0f, cs.center.y > sumps[0].node.y ? -1f : 1f);
             foreach (var sp in sumps)
@@ -2837,7 +3490,7 @@ namespace ThePitt.World.Generation
 
                 float clearance = R(3.6f, 4.4f);
                 var mass = Box("Underpass", parent, Grow(span, 0.05f), ground + clearance, ground + clearance + R(5f, 12f),
-                    Chance(0.5f) ? g.brick : g.concrete);
+                    Chance(0.5f) ? g.brick : g.concrete, ground: ground);
                 // Soffit lights.
                 foreach (float t in new[] { 0.3f, 0.7f })
                 {
@@ -2938,11 +3591,13 @@ namespace ThePitt.World.Generation
                 Rect Span(float from, float to, float l0, float l1) => s.alongX ? Rect.MinMaxRect(from, l0, to, l1) : Rect.MinMaxRect(l0, from, l1, to);
 
                 // A raised kerb down one side, unless something else is in the way.
+                // From version 6 kerbs line the buildings instead (BuildKerbs); the rolls are kept so the rest comes out the same.
                 if (!Blocked(r) && Chance(0.6f))
                 {
                     float side = Chance(0.5f) ? -1f : 1f;
                     float l0 = lateral + side * (width / 2f), l1 = lateral + side * (width / 2f - 0.75f);
-                    Box("Kerb", parent, Span(a0, a1, Mathf.Min(l0, l1), Mathf.Max(l0, l1)), ground - 0.1f, ground + 0.15f, g.concreteDark);
+                    if (!Since(6))
+                        Box("Kerb", parent, Span(a0, a1, Mathf.Min(l0, l1), Mathf.Max(l0, l1)), ground - 0.1f, ground + 0.15f, g.concreteDark);
                 }
 
                 if (!Chance(g.streetPropChance)) continue;
@@ -2951,7 +3606,8 @@ namespace ThePitt.World.Generation
                 {
                     // Wrecked car parked hard against one wall.
                     float side = Chance(0.5f) ? -1f : 1f;
-                    float l = lateral + side * (width / 2f - 0.95f);
+                    // From version 6 against the kerb rather than the wall.
+                    float l = lateral + side * (width / 2f - 0.95f - (Since(9) ? g.sidewalkWidth : Since(6) ? g.kerbWidth : 0f));
                     var spot = Span(at, at + 4f, l - 0.85f, l + 0.85f);
                     if (Blocked(spot)) continue;
                     var car = new GameObject("WreckedCar").transform;
@@ -2967,7 +3623,9 @@ namespace ThePitt.World.Generation
                 {
                     // Jersey barrier across part of the road.
                     float side = Chance(0.5f) ? -1f : 1f;
-                    float l0 = lateral + side * width / 2f, l1 = lateral + side * (width / 2f - R(1.4f, 2f));
+                    // From version 9 from the sidewalk's edge.
+                    float walk = Since(9) ? g.sidewalkWidth : 0f;
+                    float l0 = lateral + side * (width / 2f - walk), l1 = lateral + side * (width / 2f - walk - R(1.4f, 2f));
                     var spot = Span(at, at + 0.7f, Mathf.Min(l0, l1), Mathf.Max(l0, l1));
                     if (Blocked(spot)) continue;
                     Box("Barrier", parent, spot, ground - 0.05f, ground + 0.85f, g.concrete);
@@ -3079,7 +3737,7 @@ namespace ThePitt.World.Generation
                     sections++;
                     if (Passable(root, alongX, start + d, mid, width)) continue;
                     var at = alongX ? new Vector2(start + d, mid) : new Vector2(mid, start + d);
-                    float y = g.HeightAt(at);
+                    float y = FloorAt(at);
                     var half = alongX ? new Vector3(0.3f, (PlayerHeight - PlayerStep) / 2f, width / 2f) : new Vector3(width / 2f, (PlayerHeight - PlayerStep) / 2f, 0.3f);
                     int n = Physics.OverlapBoxNonAlloc(new Vector3(at.x, y + PlayerStep + half.y, at.y), half, overlapBuffer, Quaternion.identity, ~0, QueryTriggerInteraction.Ignore);
                     for (int i = 0; i < n; i++)
@@ -3103,7 +3761,7 @@ namespace ThePitt.World.Generation
             for (float off = -reach; off <= reach + 0.001f; off += 0.05f)
             {
                 var p = alongX ? new Vector2(along, mid + off) : new Vector2(mid + off, along);
-                float y = g.HeightAt(p);
+                float y = FloorAt(p);
                 var bottom = new Vector3(p.x, y + PlayerStep + PlayerRadius, p.y);
                 var top = new Vector3(p.x, y + PlayerHeight - PlayerRadius, p.y);
                 int n = Physics.OverlapCapsuleNonAlloc(bottom, top, PlayerRadius, overlapBuffer, ~0, QueryTriggerInteraction.Ignore);
@@ -3411,7 +4069,9 @@ namespace ThePitt.World.Generation
                         // Raised doorway with a stoop of three steps.
                         bool stoop = Chance(0.5f);
                         float sill = stoop ? 0.6f : 0f;
-                        FaceBox("Doorway", details, p, normal, foot + sill + 1f, new Vector3(1f, 2f, 0.05f), g.trash);
+                        // From version 6 one without a stoop stands on the kerb.
+                        float sole = stoop ? foot + sill : Since(6) ? FloorAt(p + normal * 0.1f) : foot;
+                        FaceBox("Doorway", details, p, normal, sole + 1f, new Vector3(1f, 2f, 0.05f), g.trash);
                         if (stoop)
                             for (int k = 0; k < 3; k++)
                             {
@@ -3429,12 +4089,13 @@ namespace ThePitt.World.Generation
                     var normal = Faces[rng.Next(4)];
                     if (ExposedPoint(fp, normal, 0.5f, out var p))
                     {
-                        float radius = R(0.1f, 0.2f);
+                        // From version 9 thinner, and sunk half into the wall so it stays within the kerb.
+                        float radius = Since(9) ? R(0.04f, 0.08f) : R(0.1f, 0.2f);
                         float pipeTop = Mathf.Min(b.top, b.ground + R(6f, 20f));
                         var pipe = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
                         pipe.name = "WallPipe";
                         pipe.transform.SetParent(details, false);
-                        var c = p + normal * (radius + 0.08f);
+                        var c = p + normal * (Since(9) ? radius * 0.5f : radius + 0.08f);
                         pipe.transform.position = new Vector3(c.x, (b.groundMin + pipeTop) / 2f, c.y);
                         pipe.transform.localScale = new Vector3(radius * 2f, (pipeTop - b.groundMin) / 2f, radius * 2f);
                         pipe.GetComponent<Renderer>().sharedMaterial = Chance(0.5f) ? g.rust : g.metal;
@@ -3724,6 +4385,16 @@ namespace ThePitt.World.Generation
             return near;
         }
 
+        /// <summary>Whether one of the city's buildings stands at a point.</summary>
+        private static bool BuildingAt(Vector2 p)
+        {
+            var near = PlansNear(p);
+            if (near != null)
+                foreach (var plan in near)
+                    if (plan.footprint.Contains(p)) return true;
+            return false;
+        }
+
         /// <summary>Top of the building standing at a point, or minus infinity in the open.</summary>
         private static float WallTop(Vector2 p)
         {
@@ -3791,7 +4462,7 @@ namespace ThePitt.World.Generation
                         p0 = new Vector2(a.xMin, inset.y);
                         p1 = new Vector2(a.xMin + fenceLength, inset.y);
                     }
-                    FencePanel(parent, p0, p1, g.HeightAt(inset), 2.2f, g.chainLink, collider: true);
+                    FencePanel(parent, p0, p1, FloorAt(inset), 2.2f, g.chainLink, collider: true);
                     break;
                 }
             }
@@ -3858,27 +4529,30 @@ namespace ThePitt.World.Generation
         private static void BuildTrash(Transform root)
         {
             var parent = Group(root, "Trash");
-            void Scatter(Rect r, bool alongX, int count)
+            void Scatter(Rect r, bool alongX, int count, float inset)
             {
                 for (int i = 0; i < count; i++)
                 {
                     // Pushed up against one wall so the walkway stays passable.
                     float side = Chance(0.5f) ? -1f : 1f;
                     var p = alongX
-                        ? new Vector2(R(r.xMin, r.xMax), r.center.y + side * (r.height / 2f - 0.35f))
-                        : new Vector2(r.center.x + side * (r.width / 2f - 0.35f), R(r.yMin, r.yMax));
+                        ? new Vector2(R(r.xMin, r.xMax), r.center.y + side * (r.height / 2f - inset))
+                        : new Vector2(r.center.x + side * (r.width / 2f - inset), R(r.yMin, r.yMax));
                     if (Vector2.Distance(p, g.startPoint) < g.clearStartRadius || g.InRampCorridor(p, 0.5f) || NearCatwalk(p, 0.3f)) continue;
                     SpawnTrash(parent, p, small: Mathf.Min(r.width, r.height) < 2.5f);
                 }
             }
 
-            foreach (var s in segments) Scatter(s.rect, s.alongX, rng.Next(0, g.maxTrashPerSegment + 1));
-            foreach (var a in alleys) Scatter(a, a.width > a.height, rng.Next(0, 3));
+            // From version 6 street trash lies against the kerb, not on its edge.
+            float streetInset = 0.35f + (Since(6) ? g.kerbWidth : 0f);
+            float sidewalkInset = 0.35f + (Since(9) ? g.sidewalkWidth : Since(6) ? g.kerbWidth : 0f);
+            foreach (var s in segments) Scatter(s.rect, s.alongX, rng.Next(0, g.maxTrashPerSegment + 1), s.thoroughfare ? sidewalkInset : streetInset);
+            foreach (var a in alleys) Scatter(a, a.width > a.height, rng.Next(0, 3), 0.35f);
         }
 
         private static void SpawnTrash(Transform parent, Vector2 p, bool small)
         {
-            float y = g.HeightAt(p);
+            float y = FloorAt(p);
             bool bag = Chance(0.5f);
             var t = GameObject.CreatePrimitive(bag ? PrimitiveType.Sphere : PrimitiveType.Cube);
             t.name = bag ? "TrashBag" : "Debris";
@@ -4161,7 +4835,8 @@ namespace ThePitt.World.Generation
                 }
                 else if (streetIndex.Contains(p) || g.IsOpen(p)) c = street;
                 else if (alleyIndex.Contains(p)) c = street * 0.65f;
-                else c = building;
+                // Only where a building really stands; any ground left between them reads as alley.
+                else c = BuildingAt(p) ? building : street * 0.65f;
 
                 // High ground reads brighter, low ground darker.
                 c *= 1f + Mathf.Clamp(g.GroundAt(p), -10f, 10f) * 0.035f;
@@ -4284,7 +4959,9 @@ namespace ThePitt.World.Generation
         }
 
         /// <summary>Axis-aligned box spanning an XZ rect between two heights, in world space, with UVs in metres.</summary>
-        private static GameObject Box(string name, Transform parent, Rect xz, float bottom, float top, Material m)
+        /// <param name="ground">Height of the ground the box stands on, for ground grime (see <see cref="WorldCube"/>).
+        /// Defaults to <paramref name="bottom"/>; pass it when the box is sunk into the ground or starts above it.</param>
+        private static GameObject Box(string name, Transform parent, Rect xz, float bottom, float top, Material m, float? ground = null)
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
             go.name = name;
@@ -4292,7 +4969,7 @@ namespace ThePitt.World.Generation
             go.transform.position = new Vector3(xz.center.x, (bottom + top) / 2f, xz.center.y);
             var size = new Vector3(xz.width, top - bottom, xz.height);
             go.transform.localScale = size;
-            go.GetComponent<MeshFilter>().sharedMesh = WorldCube(go.transform.position, size);
+            go.GetComponent<MeshFilter>().sharedMesh = WorldCube(go.transform.position, size, ground ?? bottom);
             go.GetComponent<Renderer>().sharedMaterial = m;
             return go;
         }
@@ -4302,12 +4979,15 @@ namespace ThePitt.World.Generation
         /// city, not on each box, so it runs on unbroken across neighbouring boxes, and where two faces of the same
         /// material overlap they show the same texels instead of fighting. Faces run U along the wall and V up it
         /// with grime streaks hanging downward. One per box; static batching merges them anyway.
+        /// UV channel 3 holds each vertex's height above <paramref name="ground"/> in metres, so the Grime Wall shader
+        /// can lay its ground grime along the foot of the wall wherever the box stands.
         /// </summary>
-        private static Mesh WorldCube(Vector3 centre, Vector3 size)
+        private static Mesh WorldCube(Vector3 centre, Vector3 size, float ground)
         {
             var verts = new Vector3[24];
             var normals = new Vector3[24];
             var uvs = new Vector2[24];
+            var heights = new Vector2[24];
             var tris = new int[36];
             int f = 0;
             void Face(Vector3 n, Vector3 a, Vector3 b)
@@ -4323,6 +5003,7 @@ namespace ThePitt.World.Generation
                     normals[i + k] = n;
                     var world = centre + Vector3.Scale(verts[i + k], size);
                     uvs[i + k] = new Vector2(Vector3.Dot(world, a), Vector3.Dot(world, b));
+                    heights[i + k] = new Vector2(world.y - ground, 0f);
                 }
                 int t = f * 6;
                 tris[t] = i; tris[t + 1] = i + 2; tris[t + 2] = i + 1;
@@ -4340,6 +5021,7 @@ namespace ThePitt.World.Generation
             mesh.vertices = verts;
             mesh.normals = normals;
             mesh.uv = uvs;
+            mesh.SetUVs(3, heights);
             mesh.triangles = tris;
             mesh.RecalculateTangents();
             mesh.RecalculateBounds();

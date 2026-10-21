@@ -12,7 +12,8 @@ namespace ThePitt.Player
     {
         [SerializeField] private InputActionAsset actions;
         [SerializeField] private Light lamp;
-        [SerializeField] private bool startOn = true;
+        [Tooltip("Lit when the player spawns. Off by default: the player switches it on.")]
+        [SerializeField] private bool startOn;
         [SerializeField] private AudioSource clickSound;
         [Tooltip("Optional. Tints the beam toward the current district's colour.")]
         [SerializeField] private DistrictAtmosphere atmosphere;

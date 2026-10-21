@@ -165,16 +165,35 @@ namespace ThePitt.Player
         }
 
         /// <summary>Whether the player is free to use their hands: in control, not in a menu or placing.</summary>
-        public bool CanAct =>
+        public bool CanAct => InControl && !InBuildMode;
+
+        /// <summary>
+        /// In control and not placing (nor on the frame a placement ended), build mode or not. Build mode allows the
+        /// hotbar, for stations, but no fighting.
+        /// </summary>
+        public bool InControl =>
             (controller == null || controller.InputEnabled) && Cursor.lockState == CursorLockMode.Locked &&
-            (placement == null || (!placement.IsPlacing && placement.LastCancelFrame != Time.frameCount)) &&
-            (buildMode == null || !buildMode.IsActive);
+            (placement == null || (!placement.IsPlacing && placement.LastCancelFrame != Time.frameCount && placement.LastPlacedFrame != Time.frameCount));
+
+        public bool InBuildMode => buildMode != null && buildMode.IsActive;
+
+        /// <summary>
+        /// The attack button is still down from a click that wasn't meant for the hands (in a menu, or the click
+        /// that took the cursor back): ignored until it's let go.
+        /// </summary>
+        public bool AttackSwallowed { get; private set; }
 
         private void Update()
         {
             AnimateViewmodel();
             if (reloadDone > 0f && Time.time >= reloadDone) FinishReload();
-            if (!CanAct) return;
+            if (!InControl)
+            {
+                AttackSwallowed = true;
+                return;
+            }
+            if (AttackSwallowed && !attack.IsPressed()) AttackSwallowed = false;
+            if (InBuildMode) return;
 
             // With a hotbar, it does the switching; without one, the scroll wheel cycles weapons.
             if (hotbar == null)
@@ -184,7 +203,7 @@ namespace ThePitt.Player
             }
             if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame) StartReload();
 
-            if (!HandsDown && HeldUsable == null && attack.IsPressed() && Time.time >= nextAttack && !IsReloading) Attack();
+            if (!HandsDown && HeldUsable == null && !AttackSwallowed && attack.IsPressed() && Time.time >= nextAttack && !IsReloading) Attack();
         }
 
         private void Cycle(int step)
